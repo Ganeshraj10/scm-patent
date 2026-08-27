@@ -1,0 +1,103 @@
+/**
+ * ExamGuard — Mock Students
+ * 6 realistic demo students with varied model states and statuses.
+ */
+
+import type { Student } from '@/types';
+
+export const mockStudents: Student[] = [
+  {
+    id: 'stu-001',
+    name: 'Arjun Mehta',
+    email: 'arjun.mehta@university.edu',
+    studentId: 'U2021034',
+    department: 'Computer Science',
+    enrollmentYear: 2021,
+    deviceType: 'desktop',
+    modelStatus: 'active',
+    sessionCount: 24,
+    modelConfidence: 91,
+    lastActivity: '2026-08-17T14:30:00Z',
+    reviewStatus: 'normal',
+    averageDeviationScore: 22.4,
+  },
+  {
+    id: 'stu-002',
+    name: 'Priya Nair',
+    email: 'priya.nair@university.edu',
+    studentId: 'U2021087',
+    department: 'Data Science',
+    enrollmentYear: 2021,
+    deviceType: 'desktop',
+    modelStatus: 'active',
+    sessionCount: 31,
+    modelConfidence: 94,
+    lastActivity: '2026-08-18T09:15:00Z',
+    reviewStatus: 'review_required',
+    averageDeviationScore: 54.7,
+  },
+  {
+    id: 'stu-003',
+    name: 'Liam O\'Brien',
+    email: 'liam.obrien@university.edu',
+    studentId: 'U2022011',
+    department: 'Electrical Engineering',
+    enrollmentYear: 2022,
+    deviceType: 'mobile',
+    modelStatus: 'cold_start',
+    sessionCount: 7,
+    modelConfidence: 45,
+    lastActivity: '2026-08-16T11:00:00Z',
+    reviewStatus: 'normal',
+    averageDeviationScore: 18.2,
+  },
+  {
+    id: 'stu-004',
+    name: 'Sofia Petrov',
+    email: 'sofia.petrov@university.edu',
+    studentId: 'U2020156',
+    department: 'Computer Science',
+    enrollmentYear: 2020,
+    deviceType: 'desktop',
+    modelStatus: 'active',
+    sessionCount: 42,
+    modelConfidence: 96,
+    lastActivity: '2026-08-18T13:45:00Z',
+    reviewStatus: 'verified',
+    averageDeviationScore: 19.1,
+  },
+  {
+    id: 'stu-005',
+    name: 'Marcus Johnson',
+    email: 'marcus.johnson@university.edu',
+    studentId: 'U2022089',
+    department: 'Mathematics',
+    enrollmentYear: 2022,
+    deviceType: 'tablet',
+    modelStatus: 'active',
+    sessionCount: 17,
+    modelConfidence: 78,
+    lastActivity: '2026-08-15T16:20:00Z',
+    reviewStatus: 'disputed',
+    averageDeviationScore: 61.3,
+  },
+  {
+    id: 'stu-006',
+    name: 'Yuki Tanaka',
+    email: 'yuki.tanaka@university.edu',
+    studentId: 'U2023004',
+    department: 'Information Systems',
+    enrollmentYear: 2023,
+    deviceType: 'desktop',
+    modelStatus: 'cold_start',
+    sessionCount: 4,
+    modelConfidence: 30,
+    lastActivity: '2026-08-14T10:00:00Z',
+    reviewStatus: 'normal',
+    averageDeviationScore: 14.8,
+  },
+];
+
+export function getStudentById(id: string): Student | undefined {
+  return mockStudents.find((s) => s.id === id);
+}
