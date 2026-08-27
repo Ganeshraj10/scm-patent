@@ -8,15 +8,20 @@ import { ShieldCheck, AlertCircle } from 'lucide-react';
 
 export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(formData: FormData) {
     setLoading(true);
     setError(null);
+    setMessage(null);
     const result = await register(formData);
     
     if (result?.error) {
       setError(result.error);
+      setLoading(false);
+    } else if (result?.message) {
+      setMessage(result.message);
       setLoading(false);
     }
   }
@@ -47,6 +52,11 @@ export default function RegisterPage() {
               <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-start gap-3">
                 <AlertCircle size={18} className="text-rose-400 shrink-0 mt-0.5" />
                 <p className="text-sm text-rose-400">{error}</p>
+              </div>
+            )}
+            {message && (
+              <div className="p-3 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+                <p className="text-sm text-indigo-300">{message}</p>
               </div>
             )}
 

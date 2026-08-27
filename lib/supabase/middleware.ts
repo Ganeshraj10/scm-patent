@@ -43,9 +43,23 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // We could implement more strict role checking here, but for now
-  // we are handling it mainly by relying on the application routing
-  // or verifying the role in the specific layout/pages.
+  if (user && (isProtectedStudentRoute || isProtectedInstructorRoute)) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const canUseStudentArea = profile?.role === 'student';
+    const canUseInstructorArea = profile?.role === 'instructor' || profile?.role === 'admin';
+
+    if ((isProtectedStudentRoute && !canUseStudentArea) ||
+        (isProtectedInstructorRoute && !canUseInstructorArea)) {
+      const url = request.nextUrl.clone();
+      url.pathname = profile?.role === 'student' ? '/student/dashboard' : '/instructor/dashboard';
+      return NextResponse.redirect(url);
+    }
+  }
 
   return supabaseResponse;
 }

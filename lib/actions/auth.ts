@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 export async function login(formData: FormData) {
@@ -38,10 +39,8 @@ export async function login(formData: FormData) {
 
   if (profile.role === 'student') {
     redirect('/student/dashboard');
-  } else if (profile.role === 'instructor') {
+  } else if (profile.role === 'instructor' || profile.role === 'admin') {
     redirect('/instructor/dashboard');
-  } else if (profile.role === 'admin') {
-    redirect('/admin/dashboard');
   }
   
   redirect('/');
@@ -62,15 +61,26 @@ export async function register(formData: FormData) {
   }
 
   const supabase = await createClient();
+  const requestHeaders = await headers();
+  const forwardedHost = requestHeaders.get('x-forwarded-host');
+  const host = forwardedHost ?? requestHeaders.get('host');
+  const protocol = requestHeaders.get('x-forwarded-proto') ?? 'http';
+  const emailRedirectTo = host
+    ? `${protocol}://${host}/auth/callback`
+    : undefined;
 
-  // 1. Sign up the user
+  // The database trigger created by migration 14 provisions profiles and the
+  // role-specific row. Keeping this out of the browser avoids duplicate rows
+  // and works when email confirmation means there is no session yet.
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: {
         full_name: fullName,
+        role,
       },
+      ...(emailRedirectTo ? { emailRedirectTo } : {}),
     },
   });
 
@@ -82,51 +92,14 @@ export async function register(formData: FormData) {
     return { error: 'User creation failed' };
   }
 
-  // 2. Create the profile
-  const { error: profileError } = await supabase
-    .from('profiles')
-    .insert({
-      id: authData.user.id,
-      full_name: fullName,
-      email: email,
-      role: role,
-    });
-
-  if (profileError) {
-    // Note: in a real production system we should handle rollback or rely on triggers
-    console.error('Profile creation error:', profileError);
-    return { error: 'Failed to create user profile.' };
+  if (!authData.session) {
+    return {
+      message: 'Account created. Check your email to confirm your address, then sign in.',
+    };
   }
 
-  // 3. Create role-specific record
-  if (role === 'student') {
-    const { error: studentError } = await supabase
-      .from('students')
-      .insert({
-        profile_id: authData.user.id,
-        student_identifier: `STU-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`,
-        current_device_type: 'desktop', // default for now
-      });
-      
-    if (studentError) {
-       console.error('Student creation error:', studentError);
-       return { error: 'Failed to create student record.' };
-    }
-    
-  } else if (role === 'instructor') {
-    const { error: instructorError } = await supabase
-      .from('instructors')
-      .insert({
-        profile_id: authData.user.id,
-      });
-      
-    if (instructorError) {
-       console.error('Instructor creation error:', instructorError);
-       return { error: 'Failed to create instructor record.' };
-    }
-  }
-
-  // 4. Redirect to appropriate dashboard
+  // A session is present only when email confirmation is disabled or has
+  // already occurred. The trigger has provisioned the profile at this point.
   if (role === 'student') {
     redirect('/student/dashboard');
   } else {

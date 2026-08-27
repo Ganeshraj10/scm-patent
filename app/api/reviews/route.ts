@@ -59,31 +59,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Not assigned to this student' }, { status: 403 });
     }
 
-    // 4. Update the review and the session in a safe way
-    // First, update exam_sessions
-    const { error: updateExamErr } = await supabase
-      .from('exam_sessions')
-      .update({ review_status: decision })
-      .eq('id', sessionId);
+    // 4. The RPC keeps the session status and review row in one transaction.
+    const { error: reviewError } = await supabase.rpc('review_exam_session', {
+      p_exam_session_id: sessionId,
+      p_decision: decision,
+      p_notes: notes || null,
+    });
 
-    if (updateExamErr) {
-      return NextResponse.json({ error: 'Failed to update session status' }, { status: 500 });
-    }
-
-    // Upsert the review record
-    const { error: reviewErr } = await supabase
-      .from('reviews')
-      .upsert({
-        exam_session_id: sessionId,
-        instructor_id: instructorRow.id,
-        decision,
-        notes: notes || null,
-        reviewed_at: new Date().toISOString()
-      }, { onConflict: 'exam_session_id' });
-
-    if (reviewErr) {
-      console.error('[Review API] Review upsert failed', reviewErr);
-      // Not fatal if session updated, but should log
+    if (reviewError) {
+      return NextResponse.json({ error: 'Failed to save review' }, { status: 500 });
     }
 
     await logAudit(user.id, 'review_submitted', 'exam_sessions', sessionId, { decision });
@@ -132,7 +116,7 @@ async function rebuildModelForStudent(supabase: any, studentId: string) {
       .from('behavioral_sessions')
       .select(`
         id, student_id, device_type, created_at,
-        behavioral_features ( feature_name, observed_value )
+        behavioral_features ( response_time, pointer_movement, scroll_distance, revision_count, paste_detected )
       `)
       .eq('student_id', studentId);
 
@@ -142,7 +126,7 @@ async function rebuildModelForStudent(supabase: any, studentId: string) {
       .select(`
         id, student_id, device_type, started_at, status, review_status,
         assessments ( assessment_code ),
-        behavioral_features ( feature_name, observed_value )
+        behavioral_features ( response_time, pointer_movement, scroll_distance, revision_count, paste_detected )
       `)
       .eq('student_id', studentId);
 
@@ -150,8 +134,7 @@ async function rebuildModelForStudent(supabase: any, studentId: string) {
     const domainSessions: any[] = [];
     
     (behavioralSessions || []).forEach((s: any) => {
-      const features: Record<string, number> = {};
-      s.behavioral_features.forEach((f: any) => { features[f.feature_name] = f.observed_value; });
+      const features = aggregateFeatures(s.behavioral_features || []);
       domainSessions.push({
         id: s.id,
         studentId: s.student_id,
@@ -168,8 +151,7 @@ async function rebuildModelForStudent(supabase: any, studentId: string) {
       const type = isExam ? 'graded_examination' : 'low_stakes';
       if (type === 'graded_examination' && s.review_status !== 'verified') return; // Skip ineligible
 
-      const features: Record<string, number> = {};
-      s.behavioral_features.forEach((f: any) => { features[f.feature_name] = f.observed_value; });
+      const features = aggregateFeatures(s.behavioral_features || []);
       domainSessions.push({
         id: s.id,
         studentId: s.student_id,
@@ -195,22 +177,27 @@ async function rebuildModelForStudent(supabase: any, studentId: string) {
 
     // 4. Persist via the atomic RPC
     const featuresArr = model.expectations.map(e => ({
-      feature: e.feature,
-      expected: e.mean,
-      variance: Math.pow(e.stdDev, 2)
+      feature_name: e.feature,
+      expected_value: e.mean,
+      uncertainty: model.uncertainties.find(u => u.feature === e.feature)?.uncertainty ?? null,
+      variance: Math.pow(e.stdDev, 2),
+      standard_deviation: e.stdDev,
+      lower_bound: e.min,
+      upper_bound: e.max,
     }));
 
-    const rpcInput = {
-      student_id: studentId,
-      device_type: 'desktop',
-      model_status: model.status,
-      confidence: model.confidence,
-      calibrated_threshold: model.calibratedThreshold ?? null,
-      session_count: model.sessionCount,
-      feature_expectations: featuresArr
-    };
-
-    const { error: rpcErr } = await supabase.rpc('persist_behavioral_model', { p_input: rpcInput });
+    const { error: rpcErr } = await supabase.rpc('persist_behavioral_model', {
+      p_student_id: studentId,
+      p_device_type: 'desktop',
+      p_session_count: model.sessionCount,
+      p_model_status: model.status,
+      p_confidence: model.confidence,
+      p_calibrated_threshold: model.calibratedThreshold ?? null,
+      p_target_fpr: null,
+      p_training_count: model.sessionCount,
+      p_calibration_count: null,
+      p_expectations: featuresArr,
+    });
 
     if (rpcErr) {
       console.error('[RebuildModel] RPC failed:', rpcErr);
@@ -228,4 +215,24 @@ async function rebuildModelForStudent(supabase: any, studentId: string) {
     console.error('[RebuildModel] Exception:', err);
     return { success: false, error: err.message };
   }
+}
+
+function aggregateFeatures(features: Array<{
+  response_time?: number | null;
+  pointer_movement?: number | null;
+  scroll_distance?: number | null;
+  revision_count?: number | null;
+  paste_detected?: boolean | null;
+}>) {
+  const count = features.length || 1;
+  return features.reduce(
+    (total, feature) => ({
+      responseTime: total.responseTime + (feature.response_time ?? 0) / count,
+      pointerMovement: total.pointerMovement + (feature.pointer_movement ?? 0) / count,
+      scrollDistance: total.scrollDistance + (feature.scroll_distance ?? 0) / count,
+      revisionCount: total.revisionCount + (feature.revision_count ?? 0) / count,
+      pasteDetected: total.pasteDetected + (feature.paste_detected ? 100 / count : 0),
+    }),
+    { responseTime: 0, pointerMovement: 0, scrollDistance: 0, revisionCount: 0, pasteDetected: 0 }
+  );
 }
