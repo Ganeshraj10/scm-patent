@@ -56,30 +56,32 @@ interface ToggleProps {
 
 function FeatureToggle({ label, description, enabled, onChange, id }: ToggleProps) {
   return (
-    <div className="flex items-start gap-3 py-3">
+    <div className="flex items-start justify-between gap-4 py-3.5">
+      <div className="flex-1 min-w-0 pr-4">
+        <label htmlFor={id} className="text-sm font-medium text-text-primary cursor-pointer select-none">
+          {label}
+        </label>
+        {description && <p className="text-xs text-text-muted mt-0.5 leading-relaxed">{description}</p>}
+      </div>
       <button
+        type="button"
         id={id}
         role="switch"
         aria-checked={enabled}
         onClick={() => onChange(!enabled)}
         className={[
-          'relative w-9 h-5 rounded-full border transition-all flex-shrink-0 mt-0.5',
-          enabled
-            ? 'bg-indigo-600 border-indigo-500'
-            : 'bg-surface-600 border-border',
+          'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-surface-800 mt-0.5',
+          enabled ? 'bg-indigo-600' : 'bg-surface-600',
         ].join(' ')}
       >
+        <span className="sr-only">{label}</span>
         <span
           className={[
-            'absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform',
-            enabled ? 'translate-x-4' : 'translate-x-0.5',
+            'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+            enabled ? 'translate-x-5' : 'translate-x-0',
           ].join(' ')}
         />
       </button>
-      <div>
-        <p className="text-sm font-medium text-text-primary">{label}</p>
-        {description && <p className="text-xs text-text-muted mt-0.5">{description}</p>}
-      </div>
     </div>
   );
 }

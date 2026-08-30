@@ -31,10 +31,32 @@ export async function login(formData: FormData) {
     .single();
     
   if (!profile) {
-    // If no profile, they are in a weird state.
-    // For now we will route them to login with error.
-    await supabase.auth.signOut();
-    return { error: 'No profile found for this user.' };
+    // Auto-heal missing profile row if user was created before trigger
+    const role = (data.user.user_metadata?.role as string) || 'student';
+    const fullName = (data.user.user_metadata?.full_name as string) || data.user.email?.split('@')[0] || 'User';
+    
+    await supabase.from('profiles').upsert({
+      id: data.user.id,
+      email: data.user.email,
+      full_name: fullName,
+      role: role,
+    });
+
+    if (role === 'student') {
+      await supabase.from('students').upsert({
+        profile_id: data.user.id,
+        student_identifier: `STU-${data.user.id.slice(0, 8).toUpperCase()}`,
+        department: 'Computer Science',
+        enrollment_year: new Date().getFullYear(),
+        current_device_type: 'desktop'
+      });
+      redirect('/student/dashboard');
+    } else {
+      await supabase.from('instructors').upsert({
+        profile_id: data.user.id
+      });
+      redirect('/instructor/dashboard');
+    }
   }
 
   if (profile.role === 'student') {
