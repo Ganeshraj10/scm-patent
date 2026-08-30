@@ -89,7 +89,7 @@ BEGIN
     p_calibrated_threshold,
     p_training_count,
     p_calibration_count,
-    'conformal_prediction'::calibration_method
+    'conformal_style_empirical'::calibration_method
   )
   ON CONFLICT (behavioral_model_id)
   DO UPDATE SET
@@ -97,7 +97,7 @@ BEGIN
     calibrated_threshold = EXCLUDED.calibrated_threshold,
     training_session_count = EXCLUDED.training_session_count,
     calibration_session_count = EXCLUDED.calibration_session_count,
-    calibration_method = 'conformal_prediction'::calibration_method;
+    calibration_method = 'conformal_style_empirical'::calibration_method;
 
   -- 5. Replace feature_expectations deterministically
   DELETE FROM feature_expectations WHERE behavioral_model_id = v_model_id;
