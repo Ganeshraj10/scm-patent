@@ -186,7 +186,7 @@ async function rebuildModelForStudent(supabase: any, studentId: string) {
       upper_bound: e.max,
     }));
 
-    const { error: rpcErr } = await supabase.rpc('persist_behavioral_model', {
+    let { error: rpcErr } = await supabase.rpc('persist_behavioral_model', {
       p_student_id: studentId,
       p_device_type: 'desktop',
       p_session_count: model.sessionCount,
@@ -197,7 +197,36 @@ async function rebuildModelForStudent(supabase: any, studentId: string) {
       p_training_count: model.sessionCount,
       p_calibration_count: null,
       p_expectations: featuresArr,
+      p_mahalanobis_parameters: {
+        feature_order: model.featureOrder ?? [
+          'responseTime',
+          'revisionCount',
+          'pointerMovement',
+          'scrollDistance',
+          'pasteDetected',
+        ],
+        covariance_matrix: model.covarianceMatrix ?? null,
+        correlation_matrix: model.correlationMatrix ?? null,
+        inverse_correlation_matrix: model.inverseCorrelationMatrix ?? null,
+        shrinkage_lambda: model.shrinkageLambda ?? null,
+      },
     });
+
+    if (rpcErr && rpcErr.code === 'PGRST202') {
+      const fallbackRes = await supabase.rpc('persist_behavioral_model', {
+        p_student_id: studentId,
+        p_device_type: 'desktop',
+        p_session_count: model.sessionCount,
+        p_model_status: model.status,
+        p_confidence: model.confidence,
+        p_calibrated_threshold: model.calibratedThreshold ?? null,
+        p_target_fpr: null,
+        p_training_count: model.sessionCount,
+        p_calibration_count: null,
+        p_expectations: featuresArr,
+      });
+      rpcErr = fallbackRes.error;
+    }
 
     if (rpcErr) {
       console.error('[RebuildModel] RPC failed:', rpcErr);

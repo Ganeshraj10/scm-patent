@@ -456,11 +456,11 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
               </div>
             )}
             
-            {/* Prototype Disclaimer */}
+            {/* Mathematical Engine Note */}
             <div className="bg-surface-800/50 p-4 border-t border-border">
               <p className="text-xs text-indigo-300 italic flex items-start gap-2">
                 <Shield size={14} className="flex-shrink-0 mt-0.5" />
-                <span>Prototype deviation engine currently uses standardized feature deviations (independent Z-scores). Future implementation will use the patent&apos;s shrinkage-regularized Mahalanobis distance.</span>
+                <span>Multidimensional deviation engine calculates shrinkage-regularized Mahalanobis distance D_M(x) across a 5×5 covariance matrix against the student&apos;s baseline.</span>
               </p>
             </div>
           </Card>

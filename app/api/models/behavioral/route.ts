@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       .select(`
         id, student_id, device_type, session_count, model_status, confidence,
         calibrated_threshold, target_false_positive_rate, training_session_count,
-        calibration_session_count, updated_at,
+        calibration_session_count, mahalanobis_parameters, updated_at,
         feature_expectations (
           feature_name, expected_value, uncertainty, variance, standard_deviation, lower_bound, upper_bound
         ),
@@ -123,14 +123,15 @@ export async function POST(request: NextRequest) {
       training_count,
       calibration_count,
       expectations,
+      mahalanobis_parameters,
     } = body;
 
     if (!device_type || !['desktop', 'mobile', 'tablet'].includes(device_type)) {
       return NextResponse.json({ error: 'Invalid device type' }, { status: 400 });
     }
 
-    // 3. Call RPC
-    const { data: rpcData, error: rpcError } = await supabase.rpc('persist_behavioral_model', {
+    // 3. Call RPC (attempts Migration 15 signature with mahalanobis_parameters, falls back to Migration 14 signature if unapplied)
+    let { data: rpcData, error: rpcError } = await supabase.rpc('persist_behavioral_model', {
       p_student_id: authoritative_student_id,
       p_device_type: device_type,
       p_session_count: session_count ?? 0,
@@ -141,7 +142,25 @@ export async function POST(request: NextRequest) {
       p_training_count: training_count ?? null,
       p_calibration_count: calibration_count ?? null,
       p_expectations: expectations ?? [],
+      p_mahalanobis_parameters: mahalanobis_parameters ?? null,
     });
+
+    if (rpcError && rpcError.code === 'PGRST202') {
+      const fallbackRes = await supabase.rpc('persist_behavioral_model', {
+        p_student_id: authoritative_student_id,
+        p_device_type: device_type,
+        p_session_count: session_count ?? 0,
+        p_model_status: model_status ?? 'cold_start',
+        p_confidence: confidence ?? 0,
+        p_calibrated_threshold: calibrated_threshold ?? null,
+        p_target_fpr: target_fpr ?? null,
+        p_training_count: training_count ?? null,
+        p_calibration_count: calibration_count ?? null,
+        p_expectations: expectations ?? [],
+      });
+      rpcData = fallbackRes.data;
+      rpcError = fallbackRes.error;
+    }
 
     if (rpcError) {
       return NextResponse.json({ error: rpcError.message }, { status: 500 });

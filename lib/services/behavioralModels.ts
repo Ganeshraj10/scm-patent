@@ -61,7 +61,20 @@ export async function saveBehavioralModel(
           lower_bound: e.min,
           upper_bound: e.max,
         };
-      })
+      }),
+      mahalanobis_parameters: {
+        feature_order: model.featureOrder ?? [
+          'responseTime',
+          'revisionCount',
+          'pointerMovement',
+          'scrollDistance',
+          'pasteDetected',
+        ],
+        covariance_matrix: model.covarianceMatrix ?? null,
+        correlation_matrix: model.correlationMatrix ?? null,
+        inverse_correlation_matrix: model.inverseCorrelationMatrix ?? null,
+        shrinkage_lambda: model.shrinkageLambda ?? null,
+      },
     };
 
     const response = await fetch('/api/models/behavioral', {
@@ -152,6 +165,8 @@ function mapModelFromApi(row: any): BehavioralModel {
     sampleSize: row.session_count,
   }));
 
+  const mp = row.mahalanobis_parameters;
+
   return {
     studentId: row.student_id,
     status: row.model_status,
@@ -162,5 +177,10 @@ function mapModelFromApi(row: any): BehavioralModel {
     expectations: exps,
     uncertainties: uncs,
     calibratedThreshold: row.calibrated_threshold ?? undefined,
+    covarianceMatrix: mp?.covariance_matrix ?? undefined,
+    correlationMatrix: mp?.correlation_matrix ?? undefined,
+    inverseCorrelationMatrix: mp?.inverse_correlation_matrix ?? undefined,
+    shrinkageLambda: mp?.shrinkage_lambda ?? undefined,
+    featureOrder: mp?.feature_order ?? undefined,
   };
 }

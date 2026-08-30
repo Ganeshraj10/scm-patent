@@ -75,6 +75,11 @@ export interface BehavioralModel {
   expectations: FeatureExpectation[];
   uncertainties: FeatureUncertainty[];
   calibratedThreshold?: number; // Phase 6: Distribution-free conformal threshold
+  covarianceMatrix?: number[][];
+  correlationMatrix?: number[][];
+  inverseCorrelationMatrix?: number[][];
+  shrinkageLambda?: number;
+  featureOrder?: string[];
 }
 
 // ─── Sessions ───────────────────────────────────────────────
@@ -105,7 +110,8 @@ export interface FeatureContribution {
   expected: number;
   observed: number;
   deviation: number;        // absolute residual
-  contribution: number;     // % of total deviation score
+  contribution: number;     // coordinate contribution to Mahalanobis distance
+  direction?: 'higher_than_expected' | 'lower_than_expected' | 'within_expected_range';
 }
 
 export interface DeviationAnalysis {

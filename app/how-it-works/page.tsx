@@ -79,11 +79,10 @@ export default function HowItWorksPage() {
           </p>
           
           <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-sm">
-            <p className="font-semibold text-indigo-400 mb-1">Functional Prototype Disclaimer</p>
+            <p className="font-semibold text-indigo-400 mb-1">Patented Behavioral Integrity Engine</p>
             <p className="text-indigo-200/80">
-              ExamGuard is a functional prototype demonstrating the patented personalized examination-integrity architecture. 
-              The current deviation engine utilizes a prototype weighted Z-score approximation to demonstrate the end-to-end loop, 
-              whereas the final patent specification details a shrinkage-regularized Mahalanobis distance mechanism for joint deviation.
+              ExamGuard implements the patented personalized examination-integrity architecture. 
+              The multidimensional deviation engine utilizes shrinkage-regularized Mahalanobis distance across a full 5×5 covariance matrix to detect joint behavioral anomalies against a student&apos;s own baseline.
             </p>
           </div>
         </div>

@@ -24,7 +24,9 @@ export async function POST(request: Request) {
       .select(`
         id, student_id, device_type, started_at, submitted_at,
         behavioral_features (
-          feature_name, observed_value, expected_value, deviation
+          question_id, response_time, pointer_movement, scroll_distance,
+          revision_count, paste_detected, device_type, question_difficulty,
+          session_position, event_timestamp
         ),
         cryptographic_commitments (
           hash, algorithm, payload_version, created_at
@@ -45,27 +47,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No commitment found for this session' }, { status: 404 });
     }
 
-    // 3. Map features back to the format expected by the crypto engine
-    // The canonical payload uses: sessionId, features, etc.
-    const rawFeatures = examSession.behavioral_features || [];
-    
-    // We map the array of features to the canonical format (or object format depending on cryptoEngine).
-    // Let's format them as the `ExamSession` object expects.
-    const featuresObj: Record<string, number> = {};
-    (rawFeatures as any[]).forEach(f => {
-      featuresObj[f.feature_name] = f.observed_value;
-    });
+    // 3. Map features back to the array expected by the crypto engine
+    const rawFeatures = (examSession.behavioral_features as any[]) || [];
+    const mappedFeatures = rawFeatures.map((f, idx) => ({
+      questionId: f.question_id || `q-${idx}`,
+      responseTime: f.response_time ?? 0,
+      revisionCount: f.revision_count ?? 0,
+      pointerMovement: f.pointer_movement ?? 0,
+      scrollDistance: f.scroll_distance ?? 0,
+      pasteDetected: Boolean(f.paste_detected),
+      deviceType: f.device_type || examSession.device_type,
+      questionDifficulty: f.question_difficulty ?? undefined,
+      sessionPosition: f.session_position ?? idx,
+      eventTimestamp: f.event_timestamp ?? null,
+    }));
 
-    const sessionMock: any = {
+    const sessionPayload: any = {
       id: examSession.id,
       studentId: examSession.student_id,
       deviceType: examSession.device_type,
-      date: examSession.started_at,
-      features: featuresObj,
+      startTime: examSession.started_at,
+      features: mappedFeatures,
     };
 
     // 4. Verify
-    const payload = buildCanonicalPayload(sessionMock);
+    const payload = buildCanonicalPayload(sessionPayload);
     const isValid = await verifySessionCommitment(payload, commitment.hash);
 
     // 5. Audit Log

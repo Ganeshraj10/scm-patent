@@ -18,6 +18,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { evaluateSessionDeviation } from '@/lib/deviationEngine';
+import { logAudit } from '@/lib/services/audit';
 
 export async function POST(request: NextRequest) {
   try {
@@ -109,7 +111,7 @@ export async function POST(request: NextRequest) {
       ? body.feature_contributions as Record<string, unknown>[]
       : [];
 
-    const sanitizedContributions = rawContributions.map((c) => ({
+    let finalContributions = rawContributions.map((c) => ({
       feature:      String(c.feature ?? ''),
       observed:     sanitizeNumeric(c.observed),
       expected:     sanitizeNumeric(c.expected),
@@ -118,18 +120,106 @@ export async function POST(request: NextRequest) {
       direction:    validateDirection(c.direction),
     }));
 
+    // ── Server-Side Authoritative Mahalanobis Recomputation ────
+    let finalDeviationScore = deviationScore;
+    let finalThreshold = threshold;
+    let finalConfidence = confidence;
+    let finalReviewStatus = body.review_status;
+
+    // Query active behavioral model for student & device
+    const { data: modelRow } = await supabase
+      .from('behavioral_models')
+      .select(`
+        id, student_id, device_type, session_count, model_status, confidence,
+        calibrated_threshold, mahalanobis_parameters,
+        feature_expectations (
+          feature_name, expected_value, standard_deviation, lower_bound, upper_bound
+        )
+      `)
+      .eq('student_id', authoritative_student_id)
+      .eq('device_type', body.device_type)
+      .maybeSingle();
+
+    if (modelRow && modelRow.feature_expectations && modelRow.feature_expectations.length > 0) {
+      const exps = modelRow.feature_expectations.map((e: any) => ({
+        feature: e.feature_name,
+        label: e.feature_name,
+        unit: '',
+        mean: Number(e.expected_value),
+        stdDev: Number(e.standard_deviation),
+        min: Number(e.lower_bound),
+        max: Number(e.upper_bound),
+      }));
+
+      const mp = modelRow.mahalanobis_parameters as any;
+      const serverModel = {
+        studentId: authoritative_student_id,
+        status: modelRow.model_status,
+        sessionCount: modelRow.session_count,
+        minimumSessionsRequired: 10,
+        confidence: Number(modelRow.confidence ?? 0),
+        lastUpdated: new Date().toISOString(),
+        expectations: exps,
+        uncertainties: [],
+        calibratedThreshold: modelRow.calibrated_threshold ? Number(modelRow.calibrated_threshold) : undefined,
+        covarianceMatrix: mp?.covariance_matrix ?? undefined,
+        correlationMatrix: mp?.correlation_matrix ?? undefined,
+        inverseCorrelationMatrix: mp?.inverse_correlation_matrix ?? undefined,
+        shrinkageLambda: mp?.shrinkage_lambda ? Number(mp.shrinkage_lambda) : undefined,
+        featureOrder: mp?.feature_order ?? undefined,
+      };
+
+      const domainSession = {
+        id: 'server-eval',
+        studentId: authoritative_student_id,
+        studentName: '',
+        examName: '',
+        examCode: '',
+        type: 'graded_examination',
+        startTime: typeof body.started_at === 'string' ? body.started_at : new Date().toISOString(),
+        endTime: typeof body.submitted_at === 'string' ? body.submitted_at : new Date().toISOString(),
+        duration: 0,
+        questionCount: sanitizedFeatures.length,
+        deviceType: body.device_type,
+        features: sanitizedFeatures.map((f, idx) => ({
+          questionId: (f.question_id as string) || `q-${idx}`,
+          responseTime: f.response_time ?? 0,
+          pointerMovement: f.pointer_movement ?? 0,
+          scrollDistance: f.scroll_distance ?? 0,
+          revisionCount: f.revision_count ?? 0,
+          pasteDetected: f.paste_detected,
+          deviceType: body.device_type,
+        })),
+        reviewStatus: 'normal',
+      };
+
+      const serverAnalysis = evaluateSessionDeviation(domainSession as any, serverModel as any);
+      finalDeviationScore = serverAnalysis.deviationScore;
+      finalThreshold = serverAnalysis.personalizedThreshold;
+      finalConfidence = serverAnalysis.confidence;
+      finalReviewStatus = serverAnalysis.reviewRequired ? 'review_required' : 'normal';
+      finalContributions = serverAnalysis.featureContributions.map((fc) => ({
+        feature: fc.feature,
+        observed: fc.observed,
+        expected: fc.expected,
+        deviation: fc.deviation,
+        contribution: fc.contribution,
+        direction: validateDirection(fc.direction),
+      }));
+    }
+
     const rpcInput = {
       student_id:             authoritative_student_id, // server-resolved, never client-supplied
       assessment_id:          body.assessment_id ?? null,
       device_type:            body.device_type,
       started_at:             body.started_at ?? null,
       submitted_at:           body.submitted_at ?? new Date().toISOString(),
-      deviation_score:        deviationScore,
-      personalized_threshold: threshold,
-      confidence:             confidence,
-      review_status:          body.review_status,
+      deviation_score:        finalDeviationScore,
+      personalized_threshold: finalThreshold,
+      confidence:             finalConfidence,
+      review_status:          finalReviewStatus,
       features:               sanitizedFeatures,
-      feature_contributions:  sanitizedContributions,
+      feature_contributions:  finalContributions,
     };
 
     // ── Call the atomic Postgres RPC ─────────────────────────
@@ -146,6 +236,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Failed to save exam session', detail: error.message },
         { status }
+      );
+    }
+
+    // ── Audit Log ─────────────────────────────────────────────
+    if (data?.exam_session_id) {
+      await logAudit(
+        user.id,
+        'exam_session_submitted',
+        'exam_sessions',
+        data.exam_session_id,
+        {
+          deviation_score: finalDeviationScore,
+          review_status: finalReviewStatus,
+          confidence: finalConfidence,
+        }
       );
     }
 
