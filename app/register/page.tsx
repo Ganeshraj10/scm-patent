@@ -20,9 +20,6 @@ export default function RegisterPage() {
     if (result?.error) {
       setError(result.error);
       setLoading(false);
-    } else if (result?.message) {
-      setMessage(result.message);
-      setLoading(false);
     }
   }
 
@@ -118,7 +115,7 @@ export default function RegisterPage() {
                 htmlFor="role"
                 className="block text-sm font-medium text-text-secondary mb-1.5"
               >
-                I am a...
+                Application Role
               </label>
               <select
                 id="role"
@@ -126,8 +123,9 @@ export default function RegisterPage() {
                 required
                 className="block w-full appearance-none rounded-lg border border-border bg-surface-900 px-3 py-2 text-text-primary focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm transition-colors"
               >
-                <option value="student">Student</option>
-                <option value="instructor">Instructor</option>
+                <option value="student">Student / Test-Taker</option>
+                <option value="instructor">Instructor / Human Reviewer</option>
+                <option value="admin">Platform Administrator</option>
               </select>
             </div>
 

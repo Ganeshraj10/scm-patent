@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   X,
   ChevronRight,
+  GraduationCap,
 } from 'lucide-react';
 
 interface StudentNavItem {
@@ -25,42 +26,33 @@ const navItems: StudentNavItem[] = [
     label: 'Dashboard',
     href: '/student/dashboard',
     icon: <LayoutDashboard size={17} />,
-    sublabel: 'Overview & model status',
+    sublabel: 'Overview & coursework summary',
   },
   {
-    label: 'Practice Session',
-    href: '/student/practice',
+    label: 'My Coursework',
+    href: '/student/coursework',
     icon: <BookOpen size={17} />,
-    sublabel: 'Build your behavioral model',
+    sublabel: 'Practice & completed coursework',
   },
   {
-    label: 'My Behavior Profile',
+    label: 'Session History',
+    href: '/student/history',
+    icon: <BarChart3 size={17} />,
+    sublabel: 'Longitudinal interaction history',
+  },
+  {
+    label: 'Behavior Profile',
     href: '/student/behavior',
     icon: <Brain size={17} />,
-    sublabel: 'Your personalized model',
+    sublabel: 'Longitudinal behavioral trends',
   },
   {
     label: 'Take Examination',
     href: '/student/examination',
     icon: <ClipboardList size={17} />,
-    sublabel: 'Graded session',
-  },
-  {
-    label: 'My Results',
-    href: '/student/results',
-    icon: <BarChart3 size={17} />,
-    sublabel: 'Session history',
+    sublabel: 'Graded examination session',
   },
 ];
-
-// Demo student identity (Phase 2 — mock)
-const demoStudent = {
-  name: 'Arjun Mehta',
-  studentId: 'U2021034',
-  modelStatus: 'active' as const,
-  sessionCount: 24,
-  confidence: 91,
-};
 
 interface StudentSidebarProps {
   mobileOpen?: boolean;
@@ -84,7 +76,7 @@ function NavLink({ item, active }: { item: StudentNavItem; active: boolean }) {
         {item.icon}
       </span>
       <div className="flex-1 min-w-0">
-        <p className="leading-none">{item.label}</p>
+        <p className="leading-none text-xs font-semibold">{item.label}</p>
         {item.sublabel && (
           <p className="text-[10px] text-text-muted mt-0.5 leading-none">{item.sublabel}</p>
         )}
@@ -98,87 +90,67 @@ export function StudentSidebar({ mobileOpen = false, onMobileClose }: StudentSid
   const pathname = usePathname();
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-surface-900 border-r border-border">
-      {/* Logo + close */}
-      <div className="flex items-center justify-between px-5 py-5 border-b border-border flex-shrink-0">
-        <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/30 group-hover:bg-indigo-500 transition-colors">
-            <ShieldCheck size={17} className="text-white" />
+    <div className="flex flex-col h-full bg-navy-950 border-r border-border select-none">
+      {/* Brand header */}
+      <div className="h-16 flex items-center justify-between px-5 border-b border-border">
+        <Link href="/student/dashboard" className="flex items-center gap-2.5 group">
+          <div className="w-8 h-8 rounded-lg bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400 group-hover:bg-sky-500/30 transition-colors shadow-md shadow-sky-500/10">
+            <GraduationCap size={18} />
           </div>
           <div>
-            <span className="text-sm font-bold text-text-primary tracking-tight">ExamGuard</span>
-            <p className="text-[10px] text-text-muted leading-none mt-0.5">Student Portal</p>
+            <span className="font-bold text-sm text-text-primary tracking-tight block leading-none">
+              ExamGuard
+            </span>
+            <span className="text-[10px] text-sky-400 font-semibold tracking-wider uppercase leading-tight block mt-0.5">
+              Student Portal
+            </span>
           </div>
         </Link>
         {onMobileClose && (
           <button
             onClick={onMobileClose}
-            className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-700 transition-colors lg:hidden"
-            aria-label="Close sidebar"
+            className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-700 transition-colors lg:hidden"
+            aria-label="Close navigation"
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         )}
       </div>
 
-      {/* Model status pill */}
-      <div className="px-4 pt-4 pb-2">
-        <div className="px-3 py-2.5 rounded-lg bg-emerald-500/8 border border-emerald-500/15">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">Model Active</span>
-            <span className="text-[10px] font-bold text-emerald-400">{demoStudent.confidence}%</span>
-          </div>
-          <div className="w-full h-1 bg-surface-600 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-emerald-500 rounded-full"
-              style={{ width: `${demoStudent.confidence}%` }}
-            />
-          </div>
-          <p className="text-[10px] text-text-muted mt-1">{demoStudent.sessionCount} sessions · {demoStudent.confidence}% confidence</p>
+      {/* Student Badge Banner */}
+      <div className="px-4 py-2.5 mx-3 mt-3 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+          <span className="text-[11px] font-bold text-sky-300">Alex Chen</span>
         </div>
+        <span className="text-[10px] font-mono text-sky-400 font-bold bg-surface-900 px-1.5 py-0.5 rounded border border-sky-500/30">
+          S001
+        </span>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 py-3 space-y-1 overflow-y-auto" aria-label="Student navigation">
+      {/* Navigation */}
+      <nav aria-label="Student Navigation" className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider px-3 mb-2">
+          Student Coursework
+        </div>
         {navItems.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(item.href + '/');
-          return <NavLink key={item.href} item={item} active={active} />;
+          const isActive =
+            pathname === item.href ||
+            (item.href !== '/student/dashboard' && pathname.startsWith(item.href));
+          return <NavLink key={item.href} item={item} active={isActive} />;
         })}
       </nav>
 
-      {/* Instructor link */}
-      <div className="px-4 pb-3 flex-shrink-0">
-        <Link
-          href="/instructor/dashboard"
-          className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs text-text-muted hover:text-text-secondary border border-border hover:bg-surface-700 transition-colors"
-        >
-          Switch to Instructor View
-        </Link>
-      </div>
-
-      {/* Student identity footer */}
-      <div className="p-4 border-t border-border flex-shrink-0">
-        <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-surface-700 border border-border">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-7 h-7 rounded-full bg-indigo-600/30 border border-indigo-500/30 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-indigo-400">
-                {demoStudent.name.charAt(0)}
-              </span>
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-text-primary truncate">{demoStudent.name}</p>
-              <p className="text-[10px] text-text-muted truncate">{demoStudent.studentId}</p>
-            </div>
+      {/* Privacy Notice Card */}
+      <div className="p-4 border-t border-border">
+        <div className="p-3 rounded-xl bg-surface-900 border border-border text-[11px] text-text-muted space-y-1">
+          <div className="flex items-center gap-1.5 font-semibold text-text-primary text-[11px]">
+            <ShieldCheck size={13} className="text-emerald-400" />
+            <span>Private Behavioral History</span>
           </div>
-          <form action="/auth/logout" method="POST">
-            <button
-              type="submit"
-              className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-              title="Log out"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-            </button>
-          </form>
+          <p className="text-[10px] text-text-muted leading-tight">
+            Your longitudinal interaction history belongs exclusively to you and forms your future baseline.
+          </p>
         </div>
       </div>
     </div>
@@ -186,28 +158,23 @@ export function StudentSidebar({ mobileOpen = false, onMobileClose }: StudentSid
 
   return (
     <>
-      {/* Desktop */}
-      <aside className="hidden lg:flex flex-col w-64 flex-shrink-0 h-screen sticky top-0">
+      <aside aria-label="Desktop Navigation" className="hidden lg:flex lg:w-60 lg:flex-col lg:flex-shrink-0 h-full">
         {sidebarContent}
       </aside>
 
-      {/* Mobile backdrop */}
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
           onClick={onMobileClose}
-          aria-hidden="true"
         />
       )}
 
-      {/* Mobile drawer */}
       <aside
+        aria-label="Mobile Navigation"
         className={[
-          'fixed inset-y-0 left-0 z-50 w-64 lg:hidden',
-          'transform transition-transform duration-300 ease-in-out',
+          'fixed inset-y-0 left-0 z-50 w-72 transform transition-transform duration-300 ease-in-out lg:hidden',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         ].join(' ')}
-        aria-hidden={!mobileOpen}
       >
         {sidebarContent}
       </aside>

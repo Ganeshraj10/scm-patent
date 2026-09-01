@@ -1,203 +1,162 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Filter, ArrowRight, Monitor, Smartphone, Tablet } from 'lucide-react';
+import { Filter, ArrowRight, Monitor, Smartphone, Laptop, Eye, Search, Layers, Clock, Activity } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
-
-import { formatDate } from '@/lib/formatters';
-import { getExamSessions } from '@/lib/services/sessions';
-import type { ExamSession, ReviewStatus, DeviceType } from '@/types';
-
-type FilterStatus = 'all' | ReviewStatus;
-
-const DeviceIcon = ({ type }: { type: DeviceType }) => {
-  if (type === 'mobile') return <Smartphone size={13} className="text-text-muted" />;
-  if (type === 'tablet') return <Tablet size={13} className="text-text-muted" />;
-  return <Monitor size={13} className="text-text-muted" />;
-};
+import { Card, CardHeader } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { getAllGradedExamSessions } from '@/lib/services/examSessionService';
+import { GradedExamSession } from '@/types';
 
 export default function SessionsPage() {
-  const [filter, setFilter] = useState<FilterStatus>('all');
-  const [sessions, setSessions] = useState<ExamSession[]>([]);
+  const [sessions, setSessions] = useState<GradedExamSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [deviceFilter, setDeviceFilter] = useState('all');
 
   useEffect(() => {
-    getExamSessions()
-      .then(setSessions)
-      .catch((err) => console.error('[SessionsPage]', err))
-      .finally(() => setLoading(false));
+    const data = getAllGradedExamSessions();
+    setSessions(data);
+    setLoading(false);
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  const filtered = useMemo(() => {
+    return sessions.filter((s) => {
+      const matchSearch =
+        search === '' ||
+        s.sessionId.toLowerCase().includes(search.toLowerCase()) ||
+        s.studentId.toLowerCase().includes(search.toLowerCase()) ||
+        s.examTitle.toLowerCase().includes(search.toLowerCase());
+      const matchDevice = deviceFilter === 'all' || s.deviceType === deviceFilter;
+      return matchSearch && matchDevice;
+    });
+  }, [sessions, search, deviceFilter]);
 
-  const sorted = [...sessions].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-
-  const filtered = filter === 'all' ? sorted : sorted.filter((s) => s.reviewStatus === filter);
-
-  const counts = {
-    all: sessions.length,
-    normal: sessions.filter((s) => s.reviewStatus === 'normal').length,
-    review_required: sessions.filter((s) => s.reviewStatus === 'review_required').length,
-    verified: sessions.filter((s) => s.reviewStatus === 'verified').length,
-    disputed: sessions.filter((s) => s.reviewStatus === 'disputed').length,
+  const getDeviceIcon = (dev: string) => {
+    if (dev === 'mobile') return <Smartphone size={13} className="text-emerald-400" />;
+    if (dev === 'web_laptop') return <Laptop size={13} className="text-sky-400" />;
+    return <Monitor size={13} className="text-indigo-400" />;
   };
 
   return (
     <div className="space-y-5 max-w-7xl">
-      <div>
-        <h2 className="text-lg font-semibold text-text-primary">Examinations</h2>
-        <p className="text-sm text-text-muted mt-0.5">
-          {sessions.length} sessions recorded across all students
-        </p>
-      </div>
-
-      {/* Filter tabs */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Filter size={14} className="text-text-muted flex-shrink-0" />
-        {(
-          [
-            { key: 'all', label: 'All' },
-            { key: 'normal', label: 'Normal' },
-            { key: 'review_required', label: 'Review Required' },
-            { key: 'verified', label: 'Verified' },
-            { key: 'disputed', label: 'Disputed' },
-          ] as const
-        ).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={[
-              'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border',
-              filter === key
-                ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30'
-                : 'bg-surface-700 text-text-secondary border-border hover:bg-surface-600',
-            ].join(' ')}
-          >
-            {label}
-            <span
-              className={[
-                'inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold',
-                filter === key ? 'bg-indigo-500/30 text-indigo-300' : 'bg-surface-600 text-text-muted',
-              ].join(' ')}
-            >
-              {counts[key]}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-text-primary">Graded Examination Sessions</h2>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              Stage 7 · Multi-Format Telemetry
             </span>
-          </button>
-        ))}
+          </div>
+          <p className="text-xs text-text-muted mt-0.5">
+            {sessions.length} graded examination sessions recorded across students and live prototype test runs
+          </p>
+        </div>
+
+        <Link href="/instructor/validation">
+          <Button variant="secondary" size="sm" className="text-xs font-semibold">
+            Open Behavior Validation Mode
+            <ArrowRight size={13} className="ml-1.5" />
+          </Button>
+        </Link>
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl bg-surface-800 border border-border overflow-hidden shadow-lg shadow-black/20">
+      {/* Filter and Search */}
+      <Card padding="sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-2 py-1">
+          <div className="relative flex-1 max-w-md">
+            <Search size={14} className="absolute left-3 top-2.5 text-text-muted" />
+            <input
+              type="text"
+              placeholder="Search by session ID, student ID, or title..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 bg-surface-700 border border-border rounded-lg text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-indigo-500 transition-colors"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-text-muted">Device:</span>
+            <select
+              aria-label="Filter by Device"
+              value={deviceFilter}
+              onChange={(e) => setDeviceFilter(e.target.value)}
+              className="bg-surface-700 border border-border text-text-primary text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-indigo-500"
+            >
+              <option value="all">All Devices</option>
+              <option value="web_desktop">Web Desktop</option>
+              <option value="web_laptop">Web Laptop</option>
+              <option value="mobile">Mobile</option>
+            </select>
+          </div>
+        </div>
+      </Card>
+
+      {/* Sessions List */}
+      <Card>
+        <CardHeader
+          title="Recorded Examination Sessions"
+          subtitle={`Showing ${filtered.length} completed examination sessions`}
+          badge={<Badge variant="active">{filtered.length} Sessions Available</Badge>}
+        />
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-border bg-surface-900/50">
-                <th className="text-left px-5 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider">Session</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider">Student</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider hidden md:table-cell">Type</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider">Deviation</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider hidden lg:table-cell">Threshold</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider hidden lg:table-cell">Device</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider">Status</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-text-muted uppercase tracking-wider hidden md:table-cell">Date</th>
-                <th className="px-4 py-3" />
+              <tr className="border-b border-border bg-surface-700/30 text-text-muted text-[11px]">
+                <th className="py-2.5 px-4 font-semibold">Session ID</th>
+                <th className="py-2.5 px-3 font-semibold">Student ID</th>
+                <th className="py-2.5 px-3 font-semibold">Date & Time</th>
+                <th className="py-2.5 px-3 font-semibold">Questions</th>
+                <th className="py-2.5 px-3 font-semibold">Avg Response</th>
+                <th className="py-2.5 px-3 font-semibold">Avg Revisions</th>
+                <th className="py-2.5 px-3 font-semibold">Device</th>
+                <th className="py-2.5 px-4 font-semibold text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="text-center py-12 text-sm text-text-muted">
-                    No sessions match this filter.
+            <tbody className="divide-y divide-border/50 text-text-secondary">
+              {filtered.map((s) => (
+                <tr key={s.sessionId} className="hover:bg-surface-700/40 transition-colors">
+                  <td className="py-3 px-4 font-mono font-bold text-text-primary text-xs">
+                    {s.sessionId}
+                  </td>
+                  <td className="py-3 px-3">
+                    <span className="font-mono text-sky-400 font-bold px-1.5 py-0.5 rounded bg-surface-700 border border-sky-500/20">
+                      {s.studentId}
+                    </span>
+                  </td>
+                  <td className="py-3 px-3 font-mono text-[11px] text-text-muted">
+                    {s.startedAt}
+                  </td>
+                  <td className="py-3 px-3 font-mono text-text-primary">
+                    {s.completedQuestionsCount} / {s.questionCount}
+                  </td>
+                  <td className="py-3 px-3 font-mono text-emerald-400 font-bold">
+                    {s.avgResponseTimeSec || 0}s
+                  </td>
+                  <td className="py-3 px-3 font-mono text-indigo-300 font-bold">
+                    {s.avgRevisionCount || 0}
+                  </td>
+                  <td className="py-3 px-3">
+                    <div className="flex items-center gap-1.5 text-text-muted text-[11px]">
+                      {getDeviceIcon(s.deviceType)}
+                      <span className="capitalize">{s.deviceType.replace('_', ' ')}</span>
+                    </div>
+                  </td>
+                  <td className="py-3 px-4 text-right">
+                    <Link href={`/instructor/sessions/${s.sessionId}`}>
+                      <Button variant="secondary" size="sm" className="h-7 px-2.5 text-xs">
+                        <Eye size={12} className="mr-1" />
+                        Inspect Telemetry
+                      </Button>
+                    </Link>
                   </td>
                 </tr>
-              ) : (
-                filtered.map((session) => (
-                  <tr
-                    key={session.id}
-                    className="hover:bg-surface-700/50 transition-colors group"
-                  >
-                    <td className="px-5 py-3.5">
-                      <p className="font-medium text-text-primary">{session.examName}</p>
-                      <p className="text-xs font-mono text-text-muted mt-0.5">{session.examCode}</p>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <Link
-                        href={`/instructor/students/${session.studentId}`}
-                        className="text-sm text-text-secondary hover:text-indigo-400 transition-colors"
-                      >
-                        {session.studentName}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3.5 hidden md:table-cell">
-                      <Badge
-                        variant={session.type === 'graded_examination' ? 'graded' : 'low_stakes'}
-                        size="sm"
-                      >
-                        {session.type === 'graded_examination' ? 'Graded' : 'Low Stakes'}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3.5 text-right">
-                      <span
-                        className={[
-                          'text-sm font-bold tabular-nums',
-                          session.deviationScore > session.personalizedThreshold
-                            ? 'text-rose-400'
-                            : session.deviationScore > session.personalizedThreshold * 0.8
-                            ? 'text-amber-400'
-                            : 'text-emerald-400',
-                        ].join(' ')}
-                      >
-                        {session.deviationScore.toFixed(1)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 text-right hidden lg:table-cell">
-                      <span className="text-xs text-text-muted tabular-nums">
-                        {session.personalizedThreshold.toFixed(1)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 hidden lg:table-cell">
-                      <div className="flex items-center gap-1.5">
-                        <DeviceIcon type={session.deviceType} />
-                        <span className="text-xs text-text-secondary capitalize">{session.deviceType}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <Badge variant={session.reviewStatus as ReviewStatus} dot size="sm">
-                        {session.reviewStatus === 'review_required'
-                          ? 'Review'
-                          : session.reviewStatus.charAt(0).toUpperCase() + session.reviewStatus.slice(1)}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3.5 hidden md:table-cell">
-                      <span className="text-xs text-text-secondary">{formatDate(session.date)}</span>
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <Link
-                        href={`/instructor/sessions/${session.id}`}
-                        className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        View <ArrowRight size={11} />
-                      </Link>
-                    </td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </div>
-        <div className="px-5 py-3 border-t border-border bg-surface-900/30">
-          <p className="text-xs text-text-muted">Showing {filtered.length} of {sessions.length} sessions</p>
-        </div>
-      </div>
+      </Card>
     </div>
   );
 }

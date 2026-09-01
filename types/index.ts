@@ -183,16 +183,40 @@ export interface Review {
   notes?: string;
 }
 
-// ─── Questions (Phase 2+) ────────────────────────────────────
+// ─── Questions (Phase 2+ & Stage 7 Realistic Formats) ────────
+
+export type QuestionType = 'mcq' | 'multiple_select' | 'short_answer' | 'coding' | 'debugging';
+
+export interface QuestionTestCase {
+  id: string;
+  input: string;
+  expectedOutput: string;
+  description?: string;
+  isHidden?: boolean;
+}
 
 export interface Question {
   id: string;
-  examCode: string;
+  examCode?: string;
+  type?: QuestionType; // Defaults to 'mcq'
+  title?: string;
   text: string;
-  options: string[];
-  correctIndex: number;
-  difficulty: number; // 1–5
+  description?: string;
+  difficulty: number; // 0.0–1.0 normalized
   topic: string;
+  // Multiple Choice & Multiple Select
+  options?: string[];
+  correctIndex?: number;
+  correctIndices?: number[];
+  // Short Answer
+  expectedAnswer?: string;
+  minWordCount?: number;
+  // Coding & Debugging
+  starterCode?: string;
+  solutionCode?: string;
+  language?: 'python' | 'javascript';
+  testCases?: QuestionTestCase[];
+  explanation?: string;
 }
 
 // ─── Chart helpers ──────────────────────────────────────────
@@ -209,3 +233,294 @@ export interface FeatureRadarPoint {
   expected: number;
   observed: number;
 }
+
+// ─── Stage 2: Patent Prototype Dataset & Normalized Domain Models ────────────
+
+export interface RawPatentRecord {
+  record_id: string;
+  student_id: string;
+  session_id: string;
+  session_type: 'low_stakes' | 'graded';
+  question_id: string;
+  timestamp: string;
+  question_difficulty: number;
+  response_time_sec: number;
+  answer_revision_count: number;
+  answer_revision_time_sec: number;
+  correctness: number;
+  pointer_distance_px: number;
+  pointer_avg_speed_px_s: number;
+  scroll_distance_px: number;
+  scroll_events: number;
+  paste_detected: number; // 0 or 1
+  character_burst_flag: number; // 0 or 1
+  device_type: 'web_desktop' | 'web_laptop' | 'mobile' | string;
+  session_position: number;
+  time_of_day: string;
+  source_dataset: string;
+  human_review_label: 'clean_mock' | 'flagged_mock' | string;
+}
+
+export interface QuestionInteraction {
+  questionId: string;
+  recordId: string;
+  difficulty: number;
+  responseTimeSec: number;
+  revisionCount: number;
+  revisionTimeSec: number;
+  correctness: number;
+  pointerDistancePx: number;
+  pointerAvgSpeedPxS: number;
+  scrollDistancePx: number;
+  scrollEvents: number;
+  pasteDetected: boolean;
+  characterBurstFlag: boolean;
+  deviceType: string;
+  sessionPosition: number;
+  timeOfDay: string;
+  timestamp: string;
+  sourceDataset: string;
+  humanReviewLabel: string;
+}
+
+export interface DatasetSession {
+  sessionId: string;
+  studentId: string;
+  sessionType: 'low_stakes' | 'graded';
+  timestamp: string;
+  deviceType: string;
+  questionCount: number;
+  avgResponseTimeSec: number;
+  avgRevisionCount: number;
+  avgPointerSpeed: number;
+  totalScrollDistance: number;
+  hasPasteEvent: boolean;
+  hasBurstEvent: boolean;
+  humanReviewLabel: string;
+  interactions: QuestionInteraction[];
+}
+
+export interface StudentGroup {
+  studentId: string;
+  totalSessions: number;
+  lowStakesCount: number;
+  gradedCount: number;
+  devices: string[];
+  primaryDevice: string;
+  avgResponseTimeSec: number;
+  avgRevisionCount: number;
+  avgPointerSpeed: number;
+  avgScrollDistance: number;
+  latestSessionDate: string;
+  sessions: DatasetSession[];
+  lowStakesSessions: DatasetSession[];
+  gradedSessions: DatasetSession[];
+}
+
+export interface DataValidationIssue {
+  recordId?: string;
+  studentId?: string;
+  sessionId?: string;
+  field: string;
+  value: any;
+  severity: 'error' | 'warning';
+  message: string;
+}
+
+export interface DataValidationReport {
+  isValid: boolean;
+  totalRecordsChecked: number;
+  errorCount: number;
+  warningCount: number;
+  duplicateCount: number;
+  issues: DataValidationIssue[];
+  checkedAt: string;
+}
+
+export interface DatasetStatusSummary {
+  totalRecords: number;
+  totalStudents: number;
+  totalSessions: number;
+  lowStakesRecords: number;
+  gradedRecords: number;
+  deviceCounts: Record<string, number>;
+  flaggedRecords: number;
+  dataQualityStatus: '100% Valid' | 'Issues Detected';
+  validationReport: DataValidationReport;
+  sourceComposition: string;
+  isSyntheticPrototype: true;
+}
+
+// ─── Stage 3: User Management, Roles & RBAC ─────────────────────────────────
+
+export type UserRole = 'student' | 'instructor' | 'admin';
+export type UserStatus = 'active' | 'disabled';
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  status: UserStatus;
+  createdAt: string;
+  lastLogin: string;
+  studentId?: string; // Mapped dataset student ID (e.g. S001) for students
+  department?: string;
+}
+
+export type Permission =
+  | 'VIEW_OWN_DASHBOARD'
+  | 'VIEW_OWN_COURSEWORK'
+  | 'VIEW_OWN_EXAMS'
+  | 'VIEW_OWN_RESULTS'
+  | 'TAKE_EXAM'
+  | 'VIEW_INSTRUCTOR_DASHBOARD'
+  | 'VIEW_ASSIGNED_STUDENTS'
+  | 'VIEW_STUDENT_COURSEWORK'
+  | 'VIEW_STUDENT_SESSIONS'
+  | 'VIEW_BEHAVIORAL_ANALYSIS'
+  | 'VIEW_REVIEW_QUEUE'
+  | 'PERFORM_HUMAN_REVIEW'
+  | 'VIEW_ADMIN_DASHBOARD'
+  | 'MANAGE_USERS'
+  | 'CHANGE_USER_ROLE'
+  | 'TOGGLE_USER_STATUS'
+  | 'VIEW_SYSTEM_STATUS'
+  | 'MANAGE_APP_SETTINGS';
+
+export interface UserFilterOptions {
+  search?: string;
+  role?: UserRole | 'all';
+  status?: UserStatus | 'all';
+}
+
+export interface UserMutationInput {
+  name: string;
+  email: string;
+  role: UserRole;
+  status?: UserStatus;
+  studentId?: string;
+  department?: string;
+}
+
+// ─── Stage 5: Personalized Behavioral Baseline ──────────────────────────────
+
+export type MaturityStatus = 'cold_start' | 'developing' | 'established';
+
+export type AdjustmentMethod =
+  | 'difficulty_adjusted'
+  | 'student_mean_fallback'
+  | 'student_overall_fallback';
+
+export interface FeatureBaseline {
+  featureName: string;
+  displayName: string;
+  expectedValue: number;
+  mean: number;
+  median: number;
+  stdDev: number;
+  min: number;
+  max: number;
+  sampleCount: number;
+  uncertainty: number; // stdDev / sqrt(sampleCount)
+  status: 'established' | 'limited_data' | 'insufficient_data';
+  method: AdjustmentMethod;
+  unit: string;
+  difficultyRegression?: {
+    slope: number;
+    intercept: number;
+    r2: number;
+  };
+}
+
+export interface DeviceBaseline {
+  deviceType: string;
+  sessionCount: number;
+  sampleCount: number;
+  features: Record<string, FeatureBaseline>;
+}
+
+export interface PersonalizedBaseline {
+  studentId: string;
+  trainingSessionCount: number;
+  totalInteractions: number;
+  maturityStatus: MaturityStatus;
+  maturityLabel: string;
+  overallFeatures: Record<string, FeatureBaseline>;
+  deviceBaselines: Record<string, DeviceBaseline>;
+  timeOfDayDistribution: Record<string, number>;
+  lastUpdated: string;
+  eligibleLowStakesSessions: string[];
+}
+
+export interface BehaviorContext {
+  difficulty?: number;
+  deviceType?: string;
+  sessionPosition?: number;
+  timeOfDay?: string;
+}
+
+// ─── Stage 6: Graded Examination & Real-Time Feature Capture ─────────────────
+
+export type ExamSessionStatus = 'not_started' | 'in_progress' | 'completed' | 'abandoned';
+
+export interface ExamQuestionTelemetry {
+  recordId: string;
+  studentId: string;
+  sessionId: string;
+  questionId: string;
+  questionType?: QuestionType;
+  questionDifficulty: number;
+  sessionPosition: number;
+  selectedAnswerIndex: number | null;
+  selectedAnswerIndices?: number[];
+  isAnswerCorrect?: boolean;
+  responseTimeSec: number;
+  answerRevisionCount: number;
+  answerRevisionTimeSec: number;
+  codeRevisionCount?: number;
+  timeToFirstEditSec?: number;
+  codeRunCount?: number;
+  testCasesPassed?: number;
+  testCasesTotal?: number;
+  textAnswerLength?: number;
+  pointerDistancePx: number;
+  pointerAvgSpeedPxS: number;
+  scrollDistancePx: number;
+  scrollEvents: number;
+  pasteDetected: number; // 0 or 1 (content never stored)
+  characterBurstFlag: number; // 0 or 1
+  maxInsertionRate?: number; // peak chars/sec detected
+  maxCharsInserted?: number; // maximum characters added in a single event
+  burstThresholdUsed?: number; // chars/sec threshold configured
+  burstReason?: string; // diagnostic explanation for burst flag
+  deviceType: string;
+  timeOfDay: string;
+  timestamp: string;
+  clientUserAgent?: string;
+}
+
+export interface GradedExamSession {
+  sessionId: string;
+  studentId: string;
+  examId: string;
+  examTitle: string;
+  sessionType: 'graded';
+  deviceType: string;
+  status: ExamSessionStatus;
+  startedAt: string;
+  completedAt?: string;
+  questionCount: number;
+  completedQuestionsCount: number;
+  avgResponseTimeSec?: number;
+  avgRevisionCount?: number;
+  totalCodeRevisions?: number;
+  hasPasteEvent?: boolean;
+  hasBurstEvent?: boolean;
+  interactions: ExamQuestionTelemetry[];
+  answersPayload?: Record<string, any>;
+}
+
+
+
+

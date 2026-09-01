@@ -1,399 +1,372 @@
 'use client';
 
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
-import {
-  Brain,
-  BookOpen,
-  Monitor,
-  CheckCircle,
-  AlertTriangle,
-  ArrowRight,
-  Clock,
-  TrendingUp,
-  Zap,
-  ChevronRight,
-} from 'lucide-react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceLine,
-} from 'recharts';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { ProgressBar } from '@/components/ui/ProgressBar';
-import { ChartContainer } from '@/components/ui/ChartContainer';
-import { mockDeviationHistory } from '@/data/mockFeatures';
-import { getStudentSessions, getTrackedSessionsByStudent } from '@/lib/services/sessions';
-import { formatRelativeTime, formatDate } from '@/lib/formatters';
-import { useState, useEffect } from 'react';
-import { getBehavioralModel } from '@/lib/services/behavioralModels';
-import { getCurrentStudentProfile } from '@/lib/services/students';
-import type { BehavioralModel, Student } from '@/types';
-
-// Demo mock fallbacks will be resolved per student UUID where possible
-
-const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: Array<{ value: number }>; label?: string }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-surface-700 border border-border rounded-lg px-3 py-2 shadow-lg text-xs">
-        <p className="text-text-muted">{label}</p>
-        <p className="text-text-primary font-semibold mt-0.5">Score: {payload[0].value.toFixed(1)}</p>
-      </div>
-    );
-  }
-  return null;
-};
+import { Button } from '@/components/ui/Button';
+import {
+  getStudentCourseworkSummary,
+  getStudentCourseworkSessions,
+  getStudentBehaviorTrends,
+  getStudentDeviceHistory,
+  getStudentTimeOfDayHistory,
+  getStudentTimeline,
+} from '@/lib/services/studentHistoryService';
+import { getModelMaturity } from '@/lib/services/personalizedBaselineService';
+import { StudentBehaviorCharts } from '@/components/integrity/StudentBehaviorCharts';
+import { StudentTimeline } from '@/components/integrity/StudentTimeline';
+import { StudentDeviceHistory } from '@/components/integrity/StudentDeviceHistory';
+import { StudentTimeOfDay } from '@/components/integrity/StudentTimeOfDay';
+import { StudentSessionDetailModal } from '@/components/integrity/StudentSessionDetailModal';
+import {
+  BookOpen,
+  ClipboardList,
+  Clock,
+  Activity,
+  MousePointer2,
+  Scroll,
+  ArrowRight,
+  ShieldCheck,
+  GraduationCap,
+  Sparkles,
+  Calendar,
+  Layers,
+  ChevronRight,
+  User,
+  Brain,
+} from 'lucide-react';
 
 export default function StudentDashboardPage() {
-  const [loading, setLoading] = useState(true);
-  const [profileError, setProfileError] = useState<string | null>(null);
-  
-  const [model, setModel] = useState<BehavioralModel | null>(null);
-  const [sessions, setSessions] = useState<any[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
+  // Allow toggling between prototype cohort students (S001, S002, S003) for easy testing of isolation
+  const [activeStudentId, setActiveStudentId] = useState<string>('S001');
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-    getCurrentStudentProfile().then(profile => {
-      if (!active) return;
-      if (!profile) {
-        setProfileError('Student profile not found');
-        setLoading(false);
-        return;
-      }
-      
-      const studentId = profile.id;
-      getStudentSessions(studentId).then(baseSess => {
-        getTrackedSessionsByStudent(studentId).then(tracked => {
-          if (!active) return;
-          const combinedSess = [...baseSess, ...tracked];
-          const uniqueSess = Array.from(new Map(combinedSess.map(s => [s.id, s])).values());
-          
-          const baseHist = mockDeviationHistory[studentId] ?? [];
-          const appendedHist = [...baseHist];
-          tracked.forEach((s) => {
-            const dateStr = new Date(s.date || (s as any).startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            if (!appendedHist.find(h => h.date === dateStr)) {
-              appendedHist.push({
-                date: dateStr,
-                deviationScore: s.deviationScore || 0,
-                threshold: s.personalizedThreshold || 0,
-                reviewRequired: s.reviewStatus === 'review_required' || s.reviewStatus === 'disputed'
-              });
-            }
-          });
-      
-      // Phase 6: Fetch model from persistence
-      getBehavioralModel(studentId, 'desktop')
-        .then(persistedModel => {
-          if (!active) return;
-          setModel(persistedModel);
-          setSessions(uniqueSess);
-          setHistory(appendedHist);
-          setLoading(false);
-        })
-        .catch(err => {
-          if (active) {
-            setProfileError('Failed to load behavioral model');
-            setLoading(false);
-          }
-        });
-        }).catch(err => {
-          if (active) {
-            setProfileError('Failed to load tracked sessions');
-            setLoading(false);
-          }
-        });
-      }).catch(err => {
-        if (active) {
-          setProfileError('Failed to load student sessions');
-          setLoading(false);
-        }
-      });
-    }).catch(err => {
-      if (active) {
-        setProfileError(err.message);
-        setLoading(false);
-      }
-    });
-    return () => { active = false; };
-  }, []);
+  // Student student profile lookup
+  const studentNames: Record<string, string> = {
+    S001: 'Alex Chen',
+    S002: 'Bhavna Patel',
+    S003: 'Carlos Gomez',
+    S004: 'David Kim',
+    S005: 'Elena Rostova',
+  };
 
-  if (loading) {
-    return <div className="p-8 text-center text-text-muted">Loading dashboard...</div>;
-  }
-  if (profileError || !model) {
-    return <div className="p-8 text-center text-rose-400">{profileError || 'Unable to load profile'}</div>;
-  }
+  const studentName = studentNames[activeStudentId] || `Student (${activeStudentId})`;
 
-  const isActive = model.status === 'active';
-
-  const recentSessions = sessions
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 4);
+  // Fetch longitudinal data strictly scoped to activeStudentId
+  const summary = useMemo(() => getStudentCourseworkSummary(activeStudentId), [activeStudentId]);
+  const maturity = useMemo(() => getModelMaturity(activeStudentId), [activeStudentId]);
+  const recentSessions = useMemo(
+    () => getStudentCourseworkSessions(activeStudentId, { sortOrder: 'newest_first' }).slice(0, 5),
+    [activeStudentId]
+  );
+  const trends = useMemo(() => getStudentBehaviorTrends(activeStudentId), [activeStudentId]);
+  const devices = useMemo(() => getStudentDeviceHistory(activeStudentId), [activeStudentId]);
+  const timeOfDayStats = useMemo(() => getStudentTimeOfDayHistory(activeStudentId), [activeStudentId]);
+  const timeline = useMemo(() => getStudentTimeline(activeStudentId).slice(0, 4), [activeStudentId]);
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* Welcome */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-text-primary">Welcome back, Arjun</h2>
-          <p className="text-sm text-text-muted mt-0.5">
-            Your personalized behavioral model is {isActive ? 'active and ready' : 'still building'}.
-          </p>
-        </div>
-        <Link
-          href="/student/practice"
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-colors shadow-lg shadow-indigo-600/20 flex-shrink-0"
-          id="start-practice-btn"
-        >
-          <BookOpen size={14} />
-          Start Practice
-        </Link>
-      </div>
+    <div className="max-w-7xl mx-auto space-y-6">
+      {/* ─── Top Welcome & Identity Banner ─── */}
+      <div className="rounded-2xl bg-gradient-to-r from-sky-950/60 via-surface-800 to-surface-800 border border-sky-500/20 p-5 shadow-xl">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                Student Portal
+              </span>
+              <span className="text-xs text-text-muted">
+                Longitudinal Coursework & Behavioral Profile
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                <Brain size={11} />
+                {maturity.label}
+              </span>
+            </div>
 
-      {/* Model status cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Model status */}
-        <div className={[
-          'col-span-2 lg:col-span-1 rounded-xl p-5 border',
-          isActive
-            ? 'bg-emerald-500/8 border-emerald-500/20'
-            : 'bg-amber-500/8 border-amber-500/20',
-        ].join(' ')}>
-          <div className="flex items-center gap-2 mb-3">
-            <Brain size={15} className={isActive ? 'text-emerald-400' : 'text-amber-400'} />
-            <span className="text-xs font-semibold uppercase tracking-wider"
-              style={{ color: isActive ? '#34d399' : '#fbbf24' }}>
-              Behavioral Model
+            <div className="flex items-center gap-3 mt-2">
+              <h1 className="text-2xl font-black text-text-primary tracking-tight">
+                Welcome, {studentName}
+              </h1>
+              <span className="px-2 py-0.5 rounded-md bg-surface-900 border border-sky-500/30 text-xs font-mono font-bold text-sky-400">
+                {activeStudentId}
+              </span>
+            </div>
+
+            <p className="text-xs text-text-secondary mt-1 max-w-2xl leading-relaxed">
+              Your low-stakes coursework and practice sessions build your individual historical profile. The platform uses your own previous history as your future baseline.
+            </p>
+          </div>
+
+          {/* Prototype Cohort Switcher */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-surface-900/80 p-2.5 rounded-xl border border-border">
+            <span className="text-[11px] text-text-muted font-medium flex items-center gap-1">
+              <User size={13} className="text-sky-400" />
+              Demo Student:
             </span>
+            <div className="flex items-center gap-1">
+              {['S001', 'S002', 'S003', 'S004'].map((sId) => (
+                <button
+                  key={sId}
+                  onClick={() => setActiveStudentId(sId)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all ${
+                    activeStudentId === sId
+                      ? 'bg-sky-500 text-navy-950 shadow-md shadow-sky-500/30'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-surface-700'
+                  }`}
+                >
+                  {sId}
+                </button>
+              ))}
+            </div>
           </div>
-          <p className="text-2xl font-bold text-text-primary tabular-nums">{model.confidence}%</p>
-          <p className="text-xs mt-1" style={{ color: isActive ? '#34d399' : '#fbbf24' }}>
-            confidence
-          </p>
-          <ProgressBar
-            value={model.confidence}
-            colorThresholds={{ low: 70, high: 85 }}
-            size="xs"
-            className="mt-3"
-          />
-        </div>
-
-        {/* Sessions */}
-        <div className="rounded-xl bg-surface-800 border border-border p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <BookOpen size={14} className="text-indigo-400" />
-            <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">Sessions</span>
-          </div>
-          <p className="text-2xl font-bold tabular-nums text-text-primary">{model.sessionCount}</p>
-          <p className="text-xs text-text-muted mt-1">low-stakes completed</p>
-        </div>
-
-        {/* Model status badge */}
-        <div className="rounded-xl bg-surface-800 border border-border p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Zap size={14} className="text-sky-400" />
-            <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">Status</span>
-          </div>
-          <Badge
-            variant={isActive ? 'active' : 'cold_start'}
-            dot
-            className="text-sm px-3 py-1.5"
-          >
-            {isActive ? 'ACTIVE' : 'COLD START'}
-          </Badge>
-          <p className="text-xs text-text-muted mt-2">
-            {isActive ? 'Fully personalized' : `${model.minimumSessionsRequired - model.sessionCount} more sessions needed`}
-          </p>
-        </div>
-
-        {/* Device */}
-        <div className="rounded-xl bg-surface-800 border border-border p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Monitor size={14} className="text-text-muted" />
-            <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">Device</span>
-          </div>
-          <p className="text-lg font-semibold text-text-primary capitalize">Desktop</p>
-          <p className="text-xs text-text-muted mt-1">current session</p>
         </div>
       </div>
 
-      {/* Privacy notice */}
-      <div className="flex items-start gap-3 p-4 rounded-xl bg-indigo-600/6 border border-indigo-500/15">
-        <CheckCircle size={15} className="text-indigo-400 mt-0.5 flex-shrink-0" />
-        <p className="text-xs text-text-secondary leading-relaxed">
-          <span className="font-semibold text-indigo-400">Privacy: </span>
-          ExamGuard tracks only behavioral metadata — timing, scroll patterns, pointer movement — not your answers or keystrokes.
-          Your behavioral model is built from your own history and is never shared with other students.
-        </p>
-      </div>
-
-      {/* Charts + quick actions */}
-      <div className="grid lg:grid-cols-3 gap-5">
-        {/* Deviation over time */}
-        <div className="lg:col-span-2">
-          <ChartContainer
-            title="Your Deviation History"
-            subtitle="Behavioral deviation score per session — lower is more consistent"
-            height={220}
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={history} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine y={35} stroke="rgba(251,191,36,0.4)" strokeDasharray="4 4" />
-                <Line
-                  type="monotone"
-                  dataKey="deviationScore"
-                  stroke="#6366f1"
-                  strokeWidth={2.5}
-                  dot={(props) => {
-                    const d = props.payload as { reviewRequired: boolean };
-                    return (
-                      <circle
-                        key={`dot-${props.index}`}
-                        cx={props.cx}
-                        cy={props.cy}
-                        r={d.reviewRequired ? 5 : 3}
-                        fill={d.reviewRequired ? '#fb7185' : '#6366f1'}
-                        stroke="transparent"
-                      />
-                    );
-                  }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </ChartContainer>
-        </div>
-
-        {/* Next steps */}
-        <Card header={<CardHeader title="Next Steps" />} padding="sm">
-          <div className="space-y-2">
-            {[
-              {
-                icon: <BookOpen size={14} />,
-                label: 'Practice Session',
-                sub: 'Adds to your model history',
-                href: '/student/practice',
-                color: 'text-indigo-400',
-                done: true,
-              },
-              {
-                icon: <Brain size={14} />,
-                label: 'View Behavior Profile',
-                sub: 'See your expected behavior',
-                href: '/student/behavior',
-                color: 'text-sky-400',
-                done: false,
-              },
-              {
-                icon: <TrendingUp size={14} />,
-                label: 'Track Improvement',
-                sub: 'Model confidence grows with sessions',
-                href: '/student/results',
-                color: 'text-emerald-400',
-                done: false,
-              },
-            ].map((step, i) => (
-              <Link
-                key={i}
-                href={step.href}
-                className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-surface-700 transition-colors group"
-              >
-                <span className={`mt-0.5 flex-shrink-0 ${step.color}`}>{step.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-text-primary group-hover:text-indigo-400 transition-colors">
-                    {step.label}
-                  </p>
-                  <p className="text-[10px] text-text-muted">{step.sub}</p>
-                </div>
-                <ChevronRight size={12} className="text-text-muted mt-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </Link>
-            ))}
+      {/* ─── Empty State (for students with 0 records) ─── */}
+      {!summary ? (
+        <Card padding="lg">
+          <div className="py-12 text-center space-y-4 max-w-md mx-auto">
+            <div className="w-12 h-12 rounded-2xl bg-surface-700/60 border border-border flex items-center justify-center mx-auto text-text-muted">
+              <BookOpen size={24} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-text-primary">No Coursework History Yet</h3>
+              <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                You haven&apos;t completed any practice coursework or examination sessions yet. Complete practice sessions to start recording your longitudinal behavioral history.
+              </p>
+            </div>
+            <Link href="/student/practice">
+              <Button variant="primary" size="sm" className="text-xs">
+                Start Practice Coursework
+                <ArrowRight size={13} className="ml-1.5" />
+              </Button>
+            </Link>
           </div>
         </Card>
-      </div>
+      ) : (
+        <>
+          {/* ─── Coursework & Exam KPI Summary Grid ─── */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+            {/* 1. Low-Stakes Practice */}
+            <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-1">
+              <div className="flex items-center justify-between text-text-muted text-[11px]">
+                <span>Practice Sessions</span>
+                <BookOpen size={14} className="text-sky-400" />
+              </div>
+              <p className="text-2xl font-black text-sky-400 tabular-nums">
+                {summary.lowStakesSessionsCount}
+              </p>
+              <span className="text-[10px] text-text-muted block">Low-Stakes Coursework</span>
+            </div>
 
-      {/* Recent session activity */}
-      <Card
-        header={
-          <CardHeader
-            title="Recent Sessions"
-            subtitle="Your latest practice and examination sessions"
-            action={
-              <Link href="/student/results" className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1">
-                All sessions <ArrowRight size={11} />
-              </Link>
-            }
-          />
-        }
-        padding="none"
-      >
-        <div className="divide-y divide-border">
-          {recentSessions.map((session) => (
-            <div key={session.id} className="px-5 py-3.5 flex items-center gap-3">
-              <div className={[
-                'w-2 h-2 rounded-full flex-shrink-0',
-                session.reviewStatus === 'review_required' || session.reviewStatus === 'disputed'
-                  ? 'bg-amber-400'
-                  : 'bg-emerald-400',
-              ].join(' ')} />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-text-primary truncate">{session.examName}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <Clock size={10} className="text-text-muted flex-shrink-0" />
-                  <p className="text-xs text-text-muted">{formatRelativeTime(session.date)}</p>
+            {/* 2. Graded Examinations */}
+            <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-1">
+              <div className="flex items-center justify-between text-text-muted text-[11px]">
+                <span>Graded Exams</span>
+                <ClipboardList size={14} className="text-indigo-400" />
+              </div>
+              <p className="text-2xl font-black text-indigo-400 tabular-nums">
+                {summary.gradedSessionsCount}
+              </p>
+              <span className="text-[10px] text-text-muted block">Examination Sessions</span>
+            </div>
+
+            {/* 3. Total Questions */}
+            <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-1">
+              <div className="flex items-center justify-between text-text-muted text-[11px]">
+                <span>Questions Done</span>
+                <Layers size={14} className="text-emerald-400" />
+              </div>
+              <p className="text-2xl font-black text-emerald-400 tabular-nums">
+                {summary.totalQuestionsAnswered}
+              </p>
+              <span className="text-[10px] text-text-muted block">Interactions Logged</span>
+            </div>
+
+            {/* 4. Avg Response Time */}
+            <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-1">
+              <div className="flex items-center justify-between text-text-muted text-[11px]">
+                <span>Avg Response</span>
+                <Clock size={14} className="text-amber-400" />
+              </div>
+              <p className="text-2xl font-black text-amber-400 tabular-nums font-mono">
+                {summary.avgResponseTimeSec}s
+              </p>
+              <span className="text-[10px] text-text-muted block">Historical Average</span>
+            </div>
+
+            {/* 5. Avg Revisions */}
+            <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-1">
+              <div className="flex items-center justify-between text-text-muted text-[11px]">
+                <span>Avg Revisions</span>
+                <Activity size={14} className="text-purple-400" />
+              </div>
+              <p className="text-2xl font-black text-purple-400 tabular-nums font-mono">
+                {summary.avgAnswerRevisions}
+              </p>
+              <span className="text-[10px] text-text-muted block">Per Question</span>
+            </div>
+
+            {/* 6. Devices Used */}
+            <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-1">
+              <div className="flex items-center justify-between text-text-muted text-[11px]">
+                <span>Devices Used</span>
+                <Sparkles size={14} className="text-sky-300" />
+              </div>
+              <p className="text-2xl font-black text-text-primary tabular-nums">
+                {summary.devicesUsed.length}
+              </p>
+              <span className="text-[10px] text-text-muted block">Hardware Contexts</span>
+            </div>
+          </div>
+
+          {/* ─── Descriptive Behavioral Activity Summary ─── */}
+          <Card>
+            <CardHeader
+              title="Your Activity History"
+              subtitle="Descriptive interaction averages across your longitudinal coursework sessions"
+              badge={<Badge variant="active">Descriptive Statistics Only</Badge>}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-3">
+              <div className="p-3.5 rounded-xl bg-surface-700/30 border border-border space-y-1.5">
+                <div className="flex items-center gap-2 text-text-muted text-xs">
+                  <Clock size={14} className="text-emerald-400" />
+                  <span>Average Response Time</span>
                 </div>
+                <div className="text-xl font-bold text-emerald-400 font-mono">
+                  {summary.avgResponseTimeSec} seconds
+                </div>
+                <p className="text-[10px] text-text-muted leading-tight">
+                  Typical time spent formulating and submitting answers.
+                </p>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Badge variant={session.type === 'graded_examination' ? 'graded' : 'low_stakes'} size="sm">
-                  {session.type === 'graded_examination' ? 'Exam' : 'Practice'}
-                </Badge>
-                <span className={[
-                  'text-sm font-bold tabular-nums',
-                  session.deviationScore > session.personalizedThreshold ? 'text-amber-400' : 'text-emerald-400',
-                ].join(' ')}>
-                  {session.deviationScore.toFixed(0)}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
 
-      {/* Model explanation card */}
-      <Card padding="md">
-        <div className="flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center flex-shrink-0">
-            <Brain size={18} className="text-indigo-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-text-primary mb-1">How your model works</h3>
-            <p className="text-xs text-text-secondary leading-relaxed">
-              ExamGuard builds a personalized behavioral model from your practice sessions.
-              It learns your typical response timing, scrolling habits, and revision patterns.
-              During graded examinations, your behavior is compared against{' '}
-              <span className="text-indigo-400 font-medium">your own</span> baseline — not other students.
-              The more sessions you complete, the more accurate and confident the model becomes.
-            </p>
-            <div className="flex items-center gap-2 mt-3">
-              {isActive ? (
-                <><CheckCircle size={13} className="text-emerald-400" />
-                <span className="text-xs text-emerald-400 font-medium">Your model has enough history to be reliable.</span></>
-              ) : (
-                <><AlertTriangle size={13} className="text-amber-400" />
-                <span className="text-xs text-amber-400 font-medium">Complete {Math.max(0, model.minimumSessionsRequired - model.sessionCount)} more practice sessions to activate your full model.</span></>
-              )}
+              <div className="p-3.5 rounded-xl bg-surface-700/30 border border-border space-y-1.5">
+                <div className="flex items-center gap-2 text-text-muted text-xs">
+                  <Activity size={14} className="text-indigo-400" />
+                  <span>Average Answer Revisions</span>
+                </div>
+                <div className="text-xl font-bold text-indigo-400 font-mono">
+                  {summary.avgAnswerRevisions} changes / Q
+                </div>
+                <p className="text-[10px] text-text-muted leading-tight">
+                  Frequency of revising choices before final submission.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-surface-700/30 border border-border space-y-1.5">
+                <div className="flex items-center gap-2 text-text-muted text-xs">
+                  <MousePointer2 size={14} className="text-amber-400" />
+                  <span>Average Pointer Speed</span>
+                </div>
+                <div className="text-xl font-bold text-amber-400 font-mono">
+                  {summary.avgPointerSpeedPxS} px/s
+                </div>
+                <p className="text-[10px] text-text-muted leading-tight">
+                  Natural cursor navigation velocity across questions.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-surface-700/30 border border-border space-y-1.5">
+                <div className="flex items-center gap-2 text-text-muted text-xs">
+                  <Scroll size={14} className="text-sky-400" />
+                  <span>Average Scroll Distance</span>
+                </div>
+                <div className="text-xl font-bold text-sky-400 font-mono">
+                  {summary.avgScrollDistancePx} pixels
+                </div>
+                <p className="text-[10px] text-text-muted leading-tight">
+                  Average vertical viewport movement per interaction.
+                </p>
+              </div>
             </div>
+          </Card>
+
+          {/* ─── Longitudinal Behavior Charts ─── */}
+          <StudentBehaviorCharts trends={trends} studentId={activeStudentId} />
+
+          {/* ─── Timeline & Recent Sessions Grid ─── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Timeline */}
+            <StudentTimeline
+              timeline={timeline}
+              onSelectSession={(sId) => setSelectedSessionId(sId)}
+            />
+
+            {/* Recent Coursework Sessions Table */}
+            <Card>
+              <CardHeader
+                title="Recent Coursework Sessions"
+                subtitle="Your most recent practice and examination sessions"
+                action={
+                  <Link href="/student/coursework">
+                    <Button variant="ghost" size="sm" className="text-xs text-sky-400 hover:text-sky-300">
+                      View All ({summary.totalSessions})
+                      <ArrowRight size={13} className="ml-1" />
+                    </Button>
+                  </Link>
+                }
+              />
+              <div className="space-y-2 mt-3">
+                {recentSessions.map((s) => {
+                  const isLowStakes = s.sessionType === 'low_stakes';
+                  return (
+                    <div
+                      key={s.sessionId}
+                      onClick={() => setSelectedSessionId(s.sessionId)}
+                      className="p-3 rounded-xl bg-surface-700/30 hover:bg-surface-700/60 border border-border transition-all cursor-pointer flex items-center justify-between gap-3 group"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-text-primary">
+                            {s.sessionId}
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              isLowStakes
+                                ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
+                                : 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
+                            }`}
+                          >
+                            {isLowStakes ? 'Practice' : 'Exam'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-text-muted">
+                          {s.timestamp} · {s.questionCount} Questions · {s.deviceType}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-right text-xs">
+                          <span className="font-mono text-emerald-400 font-bold block">
+                            {s.avgResponseTimeSec}s
+                          </span>
+                          <span className="text-[10px] text-text-muted">avg resp</span>
+                        </div>
+                        <ChevronRight size={14} className="text-text-muted group-hover:text-text-primary group-hover:translate-x-0.5 transition-all" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
           </div>
-        </div>
-      </Card>
+
+          {/* ─── Device History & Time of Day ─── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <StudentDeviceHistory devices={devices} />
+            <StudentTimeOfDay stats={timeOfDayStats} />
+          </div>
+        </>
+      )}
+
+      {/* Question Detail Inspector Modal */}
+      <StudentSessionDetailModal
+        studentId={activeStudentId}
+        sessionId={selectedSessionId}
+        onClose={() => setSelectedSessionId(null)}
+      />
     </div>
   );
 }

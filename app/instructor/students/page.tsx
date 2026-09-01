@@ -67,11 +67,23 @@ export default function StudentsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-text-primary">Students</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-text-primary">Students</h2>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              Prototype / Synthetic Dataset
+            </span>
+          </div>
           <p className="text-sm text-text-muted mt-0.5">
-            {students.length} students enrolled · {students.filter((s) => s.modelStatus === 'active').length} active models
+            {students.length} students enrolled · Personalized longitudinal baselines active
           </p>
         </div>
+        <Link
+          href="/instructor/analysis"
+          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-900/30 transition-all self-start sm:self-auto"
+        >
+          Integrity Analysis Workbench
+          <ArrowRight size={13} />
+        </Link>
       </div>
 
       {/* Filters */}

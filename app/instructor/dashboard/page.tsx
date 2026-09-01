@@ -74,6 +74,28 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
+      {/* Prototype / Synthetic Dataset Disclaimer Banner */}
+      <div className="rounded-2xl bg-gradient-to-r from-indigo-950/60 via-surface-800 to-surface-800 border border-indigo-500/20 p-4 sm:p-5 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              Prototype / Synthetic Dataset
+            </span>
+            <span className="text-xs text-text-muted">Patent Behavioral Integrity Model (120 Records)</span>
+          </div>
+          <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">
+            Longitudinal baseline integrity evaluation active. <em>Disclaimer: Prototype using synthetic research data. Behavioral deviation is not proof of misconduct.</em>
+          </p>
+        </div>
+        <Link
+          href="/instructor/analysis"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-900/30 transition-all flex-shrink-0"
+        >
+          Open Integrity Workbench
+          <ArrowRight size={14} />
+        </Link>
+      </div>
+
       {/* KPI row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard

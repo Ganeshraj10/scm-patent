@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   X,
   ChevronRight,
+  Activity,
 } from 'lucide-react';
 
 interface NavItem {
@@ -27,6 +28,11 @@ const navItems: NavItem[] = [
     label: 'Dashboard',
     href: '/instructor/dashboard',
     icon: <LayoutDashboard size={18} />,
+  },
+  {
+    label: 'Integrity Analysis',
+    href: '/instructor/analysis',
+    icon: <Activity size={18} />,
   },
   {
     label: 'Students',

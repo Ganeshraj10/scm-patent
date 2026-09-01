@@ -1,0 +1,661 @@
+/**
+ * ExamGuard — Patent Dataset Service
+ * 
+ * Primary service for parsing, caching, and querying the 120-record unified patent prototype dataset:
+ * `patent_unified_mock_dataset_120.csv`.
+ * 
+ * Embedded with strict schema typing and helper accessors for longitudinal analysis.
+ */
+
+import type {
+  StudentGroup,
+  DatasetSession,
+  QuestionInteraction,
+  DataValidationReport,
+  DataValidationIssue,
+  DatasetStatusSummary,
+} from '@/types';
+
+export interface PatentRecord {
+  record_id: string;
+  student_id: string;
+  session_id: string;
+  session_type: 'low_stakes' | 'graded';
+  question_id: string;
+  timestamp: string;
+  question_difficulty: number;
+  response_time_sec: number;
+  answer_revision_count: number;
+  answer_revision_time_sec: number;
+  correctness: number;
+  pointer_distance_px: number;
+  pointer_avg_speed_px_s: number;
+  scroll_distance_px: number;
+  scroll_events: number;
+  paste_detected: number; // 0 or 1
+  character_burst_flag: number; // 0 or 1
+  device_type: 'web_desktop' | 'web_laptop' | 'mobile' | string;
+  session_position: number;
+  time_of_day: string;
+  source_dataset: string;
+  human_review_label: 'clean_mock' | 'flagged_mock' | string;
+}
+
+export interface DatasetSummary {
+  totalRecords: number;
+  totalStudents: number;
+  studentIds: string[];
+  lowStakesCount: number;
+  gradedCount: number;
+  deviceCounts: Record<string, number>;
+  flaggedCount: number;
+}
+
+export const RAW_PATENT_DATASET_CSV = `record_id,student_id,session_id,session_type,question_id,timestamp,question_difficulty,response_time_sec,answer_revision_count,answer_revision_time_sec,correctness,pointer_distance_px,pointer_avg_speed_px_s,scroll_distance_px,scroll_events,paste_detected,character_burst_flag,device_type,session_position,time_of_day,source_dataset,human_review_label
+R0001,S001,S001_LS01,low_stakes,q4598,2026-01-11 10:29:00,0.47,31.0,0,0.0,0,844.0,315.4,441.4,5,0,0,web_desktop,8,10:29,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0002,S001,S001_LS02,low_stakes,q8517,2026-01-12 11:13:00,0.66,27.8,1,5.2,0,624.9,223.0,584.9,2,0,0,web_laptop,5,11:13,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0003,S001,S001_LS03,low_stakes,q3621,2026-01-13 13:31:00,0.26,33.5,1,2.4,1,866.9,279.9,667.3,6,0,0,mobile,3,13:31,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0004,S001,S001_LS04,low_stakes,q6573,2026-01-14 09:43:00,0.82,30.3,0,0.0,0,1025.6,207.4,576.1,1,0,0,web_laptop,14,09:43,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0005,S001,S001_LS05,low_stakes,q3504,2026-01-15 11:53:00,0.65,33.6,0,0.0,1,839.5,178.5,786.5,5,0,0,web_desktop,18,11:53,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0006,S001,S001_LS06,low_stakes,q4946,2026-01-16 11:56:00,0.89,31.9,1,8.5,1,780.2,274.9,463.1,1,0,0,web_desktop,24,11:56,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0007,S001,S001_LS07,low_stakes,q4295,2026-01-17 13:27:00,0.88,31.5,0,0.0,0,901.8,174.0,664.1,4,0,0,web_laptop,22,13:27,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0008,S001,S001_LS08,low_stakes,q2163,2026-01-18 13:35:00,0.36,37.4,0,0.0,1,745.7,215.9,547.3,0,0,0,web_desktop,3,13:35,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0009,S001,S001_EX01,graded,q7669,2026-01-11 13:36:00,0.53,44.3,0,0.0,0,989.6,244.7,508.1,3,0,0,web_desktop,4,13:36,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0010,S001,S001_EX02,graded,q2790,2026-01-12 09:03:00,0.48,29.3,0,0.0,1,758.7,174.2,701.9,3,1,0,web_desktop,7,09:03,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0011,S001,S001_EX03,graded,q1241,2026-01-13 09:03:00,0.66,29.8,0,0.0,1,955.7,269.3,593.8,1,0,0,web_desktop,6,09:03,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0012,S001,S001_EX04,graded,q5673,2026-01-14 12:16:00,0.85,31.5,0,0.0,0,984.9,283.4,330.1,6,0,1,mobile,24,12:16,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0013,S002,S002_LS01,low_stakes,q9701,2026-01-13 11:03:00,0.24,40.8,1,5.8,0,709.0,257.3,134.7,2,0,0,web_desktop,17,11:03,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0014,S002,S002_LS02,low_stakes,q9565,2026-01-14 13:15:00,0.61,47.2,1,2.3,1,764.2,228.9,131.3,5,0,0,web_laptop,7,13:15,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0015,S002,S002_LS03,low_stakes,q9808,2026-01-15 09:29:00,0.63,32.1,1,6.5,1,717.1,303.5,138.3,3,0,0,mobile,9,09:29,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0016,S002,S002_LS04,low_stakes,q9666,2026-01-16 13:45:00,0.41,29.7,1,9.9,0,813.2,309.9,179.4,0,0,0,mobile,27,13:45,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0017,S002,S002_LS05,low_stakes,q5325,2026-01-17 11:38:00,0.35,23.0,1,4.7,1,936.6,333.7,158.5,8,0,0,web_laptop,9,11:38,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0018,S002,S002_LS06,low_stakes,q8007,2026-01-18 10:40:00,0.89,45.0,2,6.6,1,582.6,318.3,190.3,8,0,1,web_desktop,4,10:40,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0019,S002,S002_LS07,low_stakes,q6862,2026-01-19 11:23:00,0.83,43.7,1,8.4,0,858.6,251.2,194.3,3,0,0,mobile,8,11:23,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0020,S002,S002_LS08,low_stakes,q7755,2026-01-20 10:55:00,0.31,28.4,1,8.4,1,618.4,201.3,135.2,0,0,0,web_desktop,24,10:55,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0021,S002,S002_EX01,graded,q4269,2026-01-13 12:55:00,0.23,44.9,0,0.0,1,559.0,314.3,163.4,7,0,0,web_laptop,10,12:55,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0022,S002,S002_EX02,graded,q9785,2026-01-14 09:49:00,0.4,29.1,1,7.1,1,485.5,291.8,226.6,5,0,0,web_desktop,4,09:49,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0023,S002,S002_EX03,graded,q4114,2026-01-15 12:38:00,0.89,38.1,1,2.9,0,397.3,222.6,220.8,4,0,0,web_desktop,23,12:38,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0024,S002,S002_EX04,graded,q6409,2026-01-16 10:23:00,0.5,36.4,0,0.0,0,785.6,303.6,107.0,5,0,0,mobile,28,10:23,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0025,S003,S003_LS01,low_stakes,q7653,2026-01-15 12:43:00,0.72,28.6,1,3.4,1,493.2,225.5,417.1,8,0,0,web_desktop,10,12:43,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0026,S003,S003_LS02,low_stakes,q3780,2026-01-16 10:32:00,0.53,28.0,0,0.0,0,797.5,184.1,418.3,1,0,0,web_laptop,17,10:32,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0027,S003,S003_LS03,low_stakes,q2193,2026-01-17 09:15:00,0.89,20.8,0,0.0,0,921.0,274.3,517.8,7,0,0,web_laptop,29,09:15,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0028,S003,S003_LS04,low_stakes,q2746,2026-01-18 09:57:00,0.73,26.2,0,0.0,0,614.6,214.5,367.6,6,0,0,web_desktop,6,09:57,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0029,S003,S003_LS05,low_stakes,q8251,2026-01-19 13:35:00,0.62,25.0,0,0.0,0,521.8,237.4,563.5,8,0,0,web_laptop,27,13:35,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0030,S003,S003_LS06,low_stakes,q8206,2026-01-20 11:49:00,0.74,22.4,1,5.9,1,599.9,264.4,719.7,1,0,0,mobile,10,11:49,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0031,S003,S003_LS07,low_stakes,q7883,2026-01-21 12:26:00,0.43,23.6,1,5.7,1,711.4,219.0,580.2,6,0,0,mobile,23,12:26,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0032,S003,S003_LS08,low_stakes,q9947,2026-01-22 12:54:00,0.82,26.0,2,17.4,1,703.1,193.1,441.3,3,0,0,web_laptop,8,12:54,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0033,S003,S003_EX01,graded,q1444,2026-01-15 13:34:00,0.22,22.5,1,5.2,1,534.7,260.4,568.1,1,0,0,mobile,14,13:34,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0034,S003,S003_EX02,graded,q2341,2026-01-16 12:17:00,0.73,3.8,5,43.3,1,204.5,654.1,39.3,7,1,1,web_desktop,24,12:17,E-Exam + Balabit structure; mock completion,flagged_mock
+R0035,S003,S003_EX03,graded,q3496,2026-01-17 09:15:00,0.34,16.1,0,0.0,1,544.6,198.6,656.2,3,0,0,web_desktop,16,09:15,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0036,S003,S003_EX04,graded,q2771,2026-01-18 09:49:00,0.77,20.3,0,0.0,0,710.1,279.6,515.6,0,0,0,web_laptop,19,09:49,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0037,S004,S004_LS01,low_stakes,q2983,2026-01-17 10:06:00,0.69,28.3,0,0.0,1,682.4,303.4,190.4,0,0,0,web_laptop,18,10:06,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0038,S004,S004_LS02,low_stakes,q5425,2026-01-18 12:45:00,0.31,27.0,1,3.4,1,961.7,372.3,195.4,8,0,0,web_laptop,15,12:45,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0039,S004,S004_LS03,low_stakes,q7209,2026-01-19 12:15:00,0.73,24.1,0,0.0,1,1283.1,361.6,228.1,5,0,0,web_desktop,16,12:15,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0040,S004,S004_LS04,low_stakes,q7658,2026-01-20 09:33:00,0.86,32.8,0,0.0,1,1238.2,471.8,111.0,7,0,0,mobile,25,09:33,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0041,S004,S004_LS05,low_stakes,q7046,2026-01-21 12:44:00,0.37,39.2,0,0.0,1,1386.0,359.7,112.9,7,1,0,mobile,17,12:44,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0042,S004,S004_LS06,low_stakes,q4138,2026-01-22 11:07:00,0.72,22.3,2,19.2,0,967.6,358.0,122.1,3,0,0,mobile,16,11:07,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0043,S004,S004_LS07,low_stakes,q9751,2026-01-23 11:14:00,0.45,32.2,0,0.0,1,1423.5,379.1,101.9,2,0,0,web_laptop,2,11:14,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0044,S004,S004_LS08,low_stakes,q1841,2026-01-24 12:30:00,0.51,36.9,0,0.0,1,1116.0,346.7,183.8,4,0,0,web_laptop,4,12:30,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0045,S004,S004_EX01,graded,q7818,2026-01-17 13:19:00,0.26,25.8,1,4.0,1,962.4,445.0,177.9,3,1,0,mobile,13,13:19,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0046,S004,S004_EX02,graded,q3847,2026-01-18 10:40:00,0.35,24.7,1,7.3,1,1552.3,243.1,135.3,8,0,0,web_desktop,6,10:40,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0047,S004,S004_EX03,graded,q4241,2026-01-19 12:04:00,0.68,39.2,1,9.4,0,1154.7,335.5,135.9,6,0,0,web_desktop,18,12:04,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0048,S004,S004_EX04,graded,q5460,2026-01-20 11:28:00,0.29,31.6,1,7.5,1,1139.6,405.2,217.0,8,0,0,mobile,16,11:28,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0049,S005,S005_LS01,low_stakes,q1339,2026-01-19 10:43:00,0.79,41.0,0,0.0,1,1026.2,258.1,500.1,4,0,0,mobile,2,10:43,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0050,S005,S005_LS02,low_stakes,q2713,2026-01-20 09:30:00,0.44,37.6,0,0.0,1,757.8,213.1,575.2,2,0,0,web_laptop,14,09:30,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0051,S005,S005_LS03,low_stakes,q9431,2026-01-21 11:16:00,0.43,56.1,1,9.8,1,808.4,273.6,571.8,0,0,0,mobile,28,11:16,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0052,S005,S005_LS04,low_stakes,q2989,2026-01-22 13:08:00,0.85,31.8,1,5.5,0,1000.4,245.9,686.1,0,0,0,mobile,20,13:08,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0053,S005,S005_LS05,low_stakes,q5781,2026-01-23 09:29:00,0.86,29.5,1,7.2,1,686.0,215.3,702.5,8,0,0,mobile,9,09:29,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0054,S005,S005_LS06,low_stakes,q6568,2026-01-24 10:55:00,0.25,31.8,1,8.2,0,755.3,223.6,744.1,8,0,0,web_laptop,27,10:55,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0055,S005,S005_LS07,low_stakes,q7180,2026-01-25 12:34:00,0.54,40.2,1,4.7,0,943.6,239.7,486.5,7,0,0,web_laptop,28,12:34,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0056,S005,S005_LS08,low_stakes,q3492,2026-01-26 12:24:00,0.89,40.6,1,8.3,0,828.2,206.9,684.5,7,0,0,web_desktop,5,12:24,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0057,S005,S005_EX01,graded,q3529,2026-01-19 12:00:00,0.71,35.1,0,0.0,1,936.0,262.7,425.0,1,0,0,web_laptop,26,12:00,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0058,S005,S005_EX02,graded,q1588,2026-01-20 11:40:00,0.7,44.0,1,8.1,0,852.9,173.1,873.9,1,0,0,web_desktop,21,11:40,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0059,S005,S005_EX03,graded,q6314,2026-01-21 09:28:00,0.32,25.6,1,4.4,1,811.7,219.3,749.3,0,0,0,web_laptop,12,09:28,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0060,S005,S005_EX04,graded,q8555,2026-01-22 13:43:00,0.37,34.4,1,9.3,1,725.0,209.1,703.7,4,0,0,web_laptop,9,13:43,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0061,S006,S006_LS01,low_stakes,q5097,2026-01-21 11:37:00,0.41,23.8,0,0.0,0,487.7,337.2,503.5,7,0,0,web_laptop,7,11:37,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0062,S006,S006_LS02,low_stakes,q1803,2026-01-22 12:17:00,0.21,33.7,0,0.0,0,833.4,418.4,418.2,7,0,0,web_laptop,25,12:17,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0063,S006,S006_LS03,low_stakes,q1645,2026-01-23 10:40:00,0.27,28.6,0,0.0,1,560.5,334.3,619.3,4,0,0,web_laptop,2,10:40,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0064,S006,S006_LS04,low_stakes,q3695,2026-01-24 11:33:00,0.55,20.5,0,0.0,1,825.2,409.2,480.9,4,0,0,web_laptop,26,11:33,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0065,S006,S006_LS05,low_stakes,q7511,2026-01-25 10:55:00,0.67,23.6,0,0.0,0,988.0,405.0,354.4,8,0,0,web_laptop,3,10:55,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0066,S006,S006_LS06,low_stakes,q6374,2026-01-26 11:06:00,0.67,26.2,0,0.0,1,590.9,369.0,398.1,3,0,0,mobile,3,11:06,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0067,S006,S006_LS07,low_stakes,q4846,2026-01-27 09:19:00,0.9,20.9,0,0.0,1,621.5,358.2,315.8,8,0,0,web_desktop,13,09:19,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0068,S006,S006_LS08,low_stakes,q5583,2026-01-28 09:53:00,0.54,20.5,0,0.0,1,718.5,244.6,308.7,0,0,0,mobile,12,09:53,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0069,S006,S006_EX01,graded,q3001,2026-01-21 11:03:00,0.48,30.3,0,0.0,1,872.2,388.2,596.0,7,0,0,web_desktop,22,11:03,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0070,S006,S006_EX02,graded,q3417,2026-01-22 13:13:00,0.61,27.8,1,8.5,1,774.0,380.1,301.1,0,0,0,web_laptop,28,13:13,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0071,S006,S006_EX03,graded,q1258,2026-01-23 10:00:00,0.45,39.6,2,16.6,1,693.1,283.7,428.1,2,0,0,web_laptop,2,10:00,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0072,S006,S006_EX04,graded,q9543,2026-01-24 10:39:00,0.23,29.9,1,8.3,0,768.3,397.0,373.8,4,0,0,web_laptop,21,10:39,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0073,S007,S007_LS01,low_stakes,q3067,2026-01-23 12:04:00,0.83,39.1,1,4.6,1,1090.0,351.2,370.1,4,0,0,mobile,21,12:04,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0074,S007,S007_LS02,low_stakes,q4522,2026-01-24 09:54:00,0.66,29.8,0,0.0,0,909.0,470.5,328.6,6,0,0,web_laptop,29,09:54,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0075,S007,S007_LS03,low_stakes,q2494,2026-01-25 11:23:00,0.87,43.8,1,7.5,1,1285.2,351.9,384.9,1,0,0,web_desktop,14,11:23,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0076,S007,S007_LS04,low_stakes,q1842,2026-01-26 11:55:00,0.67,44.9,1,8.0,0,1201.8,340.3,259.8,4,0,0,mobile,10,11:55,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0077,S007,S007_LS05,low_stakes,q4705,2026-01-27 13:23:00,0.28,33.6,0,0.0,1,1315.7,434.6,485.6,6,0,0,mobile,25,13:23,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0078,S007,S007_LS06,low_stakes,q3347,2026-01-28 11:58:00,0.44,40.6,0,0.0,1,1077.1,402.4,510.2,6,0,0,web_desktop,5,11:58,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0079,S007,S007_LS07,low_stakes,q2391,2026-01-29 10:23:00,0.42,32.8,1,4.6,0,574.9,477.5,418.2,0,0,0,web_desktop,6,10:23,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0080,S007,S007_LS08,low_stakes,q8972,2026-01-30 13:07:00,0.44,37.4,1,2.9,1,1293.5,446.5,249.5,8,0,0,mobile,10,13:07,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0081,S007,S007_EX01,graded,q8055,2026-01-23 10:48:00,0.38,42.1,1,4.6,1,1162.0,407.3,351.7,2,0,0,web_desktop,13,10:48,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0082,S007,S007_EX02,graded,q7626,2026-01-24 12:58:00,0.25,32.1,1,4.5,1,830.1,380.3,303.4,6,0,0,web_laptop,4,12:58,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0083,S007,S007_EX03,graded,q8138,2026-01-25 11:05:00,0.51,43.3,0,0.0,1,1396.9,484.6,550.0,6,0,0,mobile,3,11:05,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0084,S007,S007_EX04,graded,q4871,2026-01-26 11:22:00,0.71,32.3,1,8.6,0,1010.3,460.8,410.9,1,0,0,web_desktop,9,11:22,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0085,S008,S008_LS01,low_stakes,q6295,2026-01-25 12:29:00,0.73,36.1,1,8.1,1,1447.5,392.2,297.3,5,0,0,web_desktop,15,12:29,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0086,S008,S008_LS02,low_stakes,q2479,2026-01-26 09:23:00,0.78,35.9,1,2.6,0,1120.5,430.8,598.1,8,0,0,web_laptop,15,09:23,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0087,S008,S008_LS03,low_stakes,q2013,2026-01-27 10:20:00,0.62,33.2,0,0.0,1,921.6,385.6,433.8,7,0,0,web_desktop,26,10:20,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0088,S008,S008_LS04,low_stakes,q7697,2026-01-28 13:39:00,0.31,34.7,1,5.0,1,1120.0,319.8,508.8,5,0,0,mobile,20,13:39,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0089,S008,S008_LS05,low_stakes,q3463,2026-01-29 11:46:00,0.8,34.4,1,9.7,0,1272.3,360.5,557.6,5,0,0,web_desktop,19,11:46,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0090,S008,S008_LS06,low_stakes,q3093,2026-01-30 13:24:00,0.65,25.9,0,0.0,1,1061.5,465.6,435.3,8,0,0,web_desktop,21,13:24,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0091,S008,S008_LS07,low_stakes,q2657,2026-01-31 12:12:00,0.36,29.2,1,3.1,1,954.4,436.4,479.0,8,0,0,mobile,27,12:12,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0092,S008,S008_LS08,low_stakes,q1715,2026-02-01 13:51:00,0.83,30.8,0,0.0,0,948.3,285.9,351.3,6,0,0,web_laptop,22,13:51,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0093,S008,S008_EX01,graded,q4178,2026-01-25 10:19:00,0.88,25.6,1,8.3,0,626.6,312.3,342.5,5,0,0,mobile,19,10:19,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0094,S008,S008_EX02,graded,q2680,2026-01-26 10:55:00,0.38,38.2,1,7.1,0,1134.6,442.6,167.7,8,0,0,web_desktop,10,10:55,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0095,S008,S008_EX03,graded,q1872,2026-01-27 10:52:00,0.52,28.5,1,4.8,1,1238.7,320.7,511.5,6,0,0,mobile,12,10:52,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0096,S008,S008_EX04,graded,q3273,2026-01-28 10:02:00,0.4,33.0,3,25.9,1,1140.0,396.6,670.2,7,0,0,web_laptop,20,10:02,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0097,S009,S009_LS01,low_stakes,q5934,2026-01-27 13:27:00,0.28,30.7,0,0.0,1,845.7,246.8,285.8,1,0,0,web_desktop,8,13:27,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0098,S009,S009_LS02,low_stakes,q4941,2026-01-28 10:45:00,0.3,26.8,1,5.4,1,772.7,254.3,247.9,6,1,0,web_desktop,22,10:45,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0099,S009,S009_LS03,low_stakes,q1713,2026-01-29 13:35:00,0.21,30.9,0,0.0,0,682.7,190.1,286.1,6,0,0,web_laptop,9,13:35,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0100,S009,S009_LS04,low_stakes,q3868,2026-01-30 10:02:00,0.45,34.8,0,0.0,1,946.5,260.9,181.4,7,0,0,mobile,16,10:02,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0101,S009,S009_LS05,low_stakes,q6080,2026-01-31 09:50:00,0.34,32.9,0,0.0,1,639.4,309.2,226.3,8,0,0,web_laptop,27,09:50,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0102,S009,S009_LS06,low_stakes,q8204,2026-02-01 09:51:00,0.46,31.1,0,0.0,0,845.8,225.1,141.3,6,0,0,web_laptop,6,09:51,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0103,S009,S009_LS07,low_stakes,q9937,2026-02-02 09:27:00,0.62,42.0,0,0.0,0,848.0,289.7,167.0,4,0,0,web_laptop,4,09:27,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0104,S009,S009_LS08,low_stakes,q1939,2026-02-03 11:39:00,0.9,41.7,1,4.2,0,772.0,297.1,127.6,1,0,0,mobile,21,11:39,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0105,S009,S009_EX01,graded,q7001,2026-01-27 12:02:00,0.29,39.7,0,0.0,1,945.0,249.4,165.3,5,1,0,web_laptop,19,12:02,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0106,S009,S009_EX02,graded,q1424,2026-01-28 11:41:00,0.4,38.9,0,0.0,0,704.7,260.6,175.7,2,0,0,web_laptop,17,11:41,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0107,S009,S009_EX03,graded,q3009,2026-01-29 11:44:00,0.84,35.9,0,0.0,1,970.9,247.3,231.4,2,0,0,web_desktop,15,11:44,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0108,S009,S009_EX04,graded,q3852,2026-01-30 13:34:00,0.4,40.1,1,4.4,1,1120.7,248.3,333.3,5,0,0,mobile,8,13:34,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0109,S010,S010_LS01,low_stakes,q2412,2026-01-29 11:29:00,0.76,21.5,0,0.0,1,960.1,389.3,469.4,1,0,0,web_laptop,13,11:29,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0110,S010,S010_LS02,low_stakes,q3981,2026-01-30 12:29:00,0.68,29.2,0,0.0,1,616.7,318.8,365.9,2,0,0,web_laptop,17,12:29,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0111,S010,S010_LS03,low_stakes,q5653,2026-01-31 10:22:00,0.86,22.3,0,0.0,1,857.6,353.0,386.2,1,0,0,web_laptop,7,10:22,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0112,S010,S010_LS04,low_stakes,q6531,2026-02-01 10:10:00,0.66,20.6,0,0.0,0,982.0,362.6,249.3,0,0,0,web_desktop,3,10:10,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0113,S010,S010_LS05,low_stakes,q5949,2026-02-02 09:31:00,0.82,22.7,1,6.4,0,950.7,268.4,291.6,7,0,0,web_desktop,26,09:31,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0114,S010,S010_LS06,low_stakes,q6658,2026-02-03 10:20:00,0.8,24.9,0,0.0,1,652.9,354.5,400.3,6,0,0,web_desktop,25,10:20,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0115,S010,S010_LS07,low_stakes,q7850,2026-02-04 09:03:00,0.4,26.7,0,0.0,1,1035.2,309.0,439.8,3,0,0,web_desktop,27,09:03,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0116,S010,S010_LS08,low_stakes,q4524,2026-02-05 09:05:00,0.86,21.4,1,6.0,0,782.3,410.7,245.2,5,0,0,web_desktop,2,09:05,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0117,S010,S010_EX01,graded,q4189,2026-01-29 11:48:00,0.48,4.7,5,11.8,1,235.7,553.3,12.9,5,1,1,mobile,10,11:48,E-Exam + Balabit structure; mock completion,flagged_mock
+R0118,S010,S010_EX02,graded,q6555,2026-01-30 09:08:00,0.88,23.6,1,5.2,0,970.5,336.2,279.9,8,0,0,web_laptop,25,09:08,EdNet/Junyi + Balabit structure; mock completion,clean_mock
+R0119,S010,S010_EX03,graded,q6218,2026-01-31 12:09:00,0.62,3.9,5,30.6,1,300.0,568.1,16.4,2,1,1,web_laptop,20,12:09,E-Exam + Balabit structure; mock completion,flagged_mock
+R0120,S010,S010_EX04,graded,q6040,2026-02-01 11:21:00,0.67,23.3,0,0.0,0,731.6,412.8,215.8,0,0,0,mobile,16,11:21,EdNet/Junyi + Balabit structure; mock completion,clean_mock`;
+
+/**
+ * Parses raw CSV string into strongly typed PatentRecord objects.
+ */
+export function parsePatentCsv(csvText: string = RAW_PATENT_DATASET_CSV): PatentRecord[] {
+  const lines = csvText.trim().split(/\r?\n/);
+  if (lines.length <= 1) return [];
+
+  const headers = lines[0].split(',').map((h) => h.trim());
+  const records: PatentRecord[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    // Handle possible quoted values or semicolon parts
+    const parts = line.split(',');
+    if (parts.length < 22) continue;
+
+    const [
+      record_id,
+      student_id,
+      session_id,
+      session_type,
+      question_id,
+      timestamp,
+      question_difficulty,
+      response_time_sec,
+      answer_revision_count,
+      answer_revision_time_sec,
+      correctness,
+      pointer_distance_px,
+      pointer_avg_speed_px_s,
+      scroll_distance_px,
+      scroll_events,
+      paste_detected,
+      character_burst_flag,
+      device_type,
+      session_position,
+      time_of_day,
+      source_dataset,
+      human_review_label,
+    ] = parts;
+
+    records.push({
+      record_id: record_id.trim(),
+      student_id: student_id.trim(),
+      session_id: session_id.trim(),
+      session_type: session_type.trim() as 'low_stakes' | 'graded',
+      question_id: question_id.trim(),
+      timestamp: timestamp.trim(),
+      question_difficulty: parseFloat(question_difficulty) || 0,
+      response_time_sec: parseFloat(response_time_sec) || 0,
+      answer_revision_count: parseInt(answer_revision_count, 10) || 0,
+      answer_revision_time_sec: parseFloat(answer_revision_time_sec) || 0,
+      correctness: parseInt(correctness, 10) || 0,
+      pointer_distance_px: parseFloat(pointer_distance_px) || 0,
+      pointer_avg_speed_px_s: parseFloat(pointer_avg_speed_px_s) || 0,
+      scroll_distance_px: parseFloat(scroll_distance_px) || 0,
+      scroll_events: parseInt(scroll_events, 10) || 0,
+      paste_detected: parseInt(paste_detected, 10) || 0,
+      character_burst_flag: parseInt(character_burst_flag, 10) || 0,
+      device_type: device_type.trim(),
+      session_position: parseInt(session_position, 10) || 0,
+      time_of_day: time_of_day.trim(),
+      source_dataset: source_dataset.trim(),
+      human_review_label: human_review_label.trim(),
+    });
+  }
+
+  return records;
+}
+
+// In-memory cached dataset
+let cachedRecords: PatentRecord[] | null = null;
+let cachedStudents: StudentGroup[] | null = null;
+let cachedSessions: DatasetSession[] | null = null;
+
+export const SOURCE_DATASET_COMPOSITION =
+  'Dataset composition: EdNet/Junyi-inspired educational interaction fields + Balabit-inspired mouse fields + prototype-generated fields.';
+
+export function mapRecordToInteraction(r: PatentRecord): QuestionInteraction {
+  return {
+    questionId: r.question_id,
+    recordId: r.record_id,
+    difficulty: r.question_difficulty,
+    responseTimeSec: r.response_time_sec,
+    revisionCount: r.answer_revision_count,
+    revisionTimeSec: r.answer_revision_time_sec,
+    correctness: r.correctness,
+    pointerDistancePx: r.pointer_distance_px,
+    pointerAvgSpeedPxS: r.pointer_avg_speed_px_s,
+    scrollDistancePx: r.scroll_distance_px,
+    scrollEvents: r.scroll_events,
+    pasteDetected: r.paste_detected === 1,
+    characterBurstFlag: r.character_burst_flag === 1,
+    deviceType: r.device_type,
+    sessionPosition: r.session_position,
+    timeOfDay: r.time_of_day,
+    timestamp: r.timestamp,
+    sourceDataset: r.source_dataset,
+    humanReviewLabel: r.human_review_label,
+  };
+}
+
+/**
+ * Groups raw records by session_id into structured DatasetSession objects.
+ */
+export function groupRecordsIntoSessions(records: PatentRecord[] = getAllPatentRecords()): DatasetSession[] {
+  const sessionMap = new Map<string, PatentRecord[]>();
+
+  records.forEach((r) => {
+    if (!sessionMap.has(r.session_id)) {
+      sessionMap.set(r.session_id, []);
+    }
+    sessionMap.get(r.session_id)!.push(r);
+  });
+
+  const sessions: DatasetSession[] = [];
+
+  sessionMap.forEach((recs, sessionId) => {
+    // Sort interactions by session position or timestamp
+    const sorted = [...recs].sort((a, b) => a.session_position - b.session_position);
+    const count = sorted.length;
+    const first = sorted[0];
+
+    const totalResponseTime = sorted.reduce((sum, r) => sum + r.response_time_sec, 0);
+    const totalRevisions = sorted.reduce((sum, r) => sum + r.answer_revision_count, 0);
+    const totalSpeed = sorted.reduce((sum, r) => sum + r.pointer_avg_speed_px_s, 0);
+    const totalScroll = sorted.reduce((sum, r) => sum + r.scroll_distance_px, 0);
+    const hasPaste = sorted.some((r) => r.paste_detected === 1);
+    const hasBurst = sorted.some((r) => r.character_burst_flag === 1);
+
+    sessions.push({
+      sessionId,
+      studentId: first.student_id,
+      sessionType: first.session_type,
+      timestamp: first.timestamp,
+      deviceType: first.device_type,
+      questionCount: count,
+      avgResponseTimeSec: count > 0 ? Number((totalResponseTime / count).toFixed(1)) : 0,
+      avgRevisionCount: count > 0 ? Number((totalRevisions / count).toFixed(1)) : 0,
+      avgPointerSpeed: count > 0 ? Number((totalSpeed / count).toFixed(1)) : 0,
+      totalScrollDistance: Number(totalScroll.toFixed(1)),
+      hasPasteEvent: hasPaste,
+      hasBurstEvent: hasBurst,
+      humanReviewLabel: sorted.some((r) => r.human_review_label === 'flagged_mock')
+        ? 'flagged_mock'
+        : 'clean_mock',
+      interactions: sorted.map(mapRecordToInteraction),
+    });
+  });
+
+  return sessions;
+}
+
+/**
+ * Groups sessions into rich StudentGroup objects.
+ */
+export function groupSessionsIntoStudents(
+  records: PatentRecord[] = getAllPatentRecords()
+): StudentGroup[] {
+  const sessions = groupRecordsIntoSessions(records);
+  const studentMap = new Map<string, DatasetSession[]>();
+
+  sessions.forEach((s) => {
+    if (!studentMap.has(s.studentId)) {
+      studentMap.set(s.studentId, []);
+    }
+    studentMap.get(s.studentId)!.push(s);
+  });
+
+  const students: StudentGroup[] = [];
+
+  studentMap.forEach((studentSessions, studentId) => {
+    // Sort chronologically
+    const sorted = [...studentSessions].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+    const lowStakesSessions = sorted.filter((s) => s.sessionType === 'low_stakes');
+    const gradedSessions = sorted.filter((s) => s.sessionType === 'graded');
+
+    const deviceCounts: Record<string, number> = {};
+    sorted.forEach((s) => {
+      deviceCounts[s.deviceType] = (deviceCounts[s.deviceType] || 0) + 1;
+    });
+    const devices = Object.keys(deviceCounts);
+    const primaryDevice = devices.sort((a, b) => deviceCounts[b] - deviceCounts[a])[0] || 'web_desktop';
+
+    const totalSessions = sorted.length;
+    const avgResponseTime =
+      totalSessions > 0
+        ? sorted.reduce((sum, s) => sum + s.avgResponseTimeSec, 0) / totalSessions
+        : 0;
+    const avgRevisions =
+      totalSessions > 0
+        ? sorted.reduce((sum, s) => sum + s.avgRevisionCount, 0) / totalSessions
+        : 0;
+    const avgSpeed =
+      totalSessions > 0
+        ? sorted.reduce((sum, s) => sum + s.avgPointerSpeed, 0) / totalSessions
+        : 0;
+    const avgScroll =
+      totalSessions > 0
+        ? sorted.reduce((sum, s) => sum + s.totalScrollDistance, 0) / totalSessions
+        : 0;
+
+    const latest = sorted[sorted.length - 1];
+
+    students.push({
+      studentId,
+      totalSessions,
+      lowStakesCount: lowStakesSessions.length,
+      gradedCount: gradedSessions.length,
+      devices,
+      primaryDevice,
+      avgResponseTimeSec: Number(avgResponseTime.toFixed(1)),
+      avgRevisionCount: Number(avgRevisions.toFixed(1)),
+      avgPointerSpeed: Number(avgSpeed.toFixed(1)),
+      avgScrollDistance: Number(avgScroll.toFixed(1)),
+      latestSessionDate: latest?.timestamp || '',
+      sessions: sorted,
+      lowStakesSessions,
+      gradedSessions,
+    });
+  });
+
+  return students.sort((a, b) => a.studentId.localeCompare(b.studentId));
+}
+
+// ─── Stage 2 Data-Access Service Layer ────────────────────────────────────────
+
+export function getAllRecords(): PatentRecord[] {
+  return getAllPatentRecords();
+}
+
+export function getAllPatentRecords(): PatentRecord[] {
+  if (!cachedRecords) {
+    cachedRecords = parsePatentCsv();
+  }
+  return cachedRecords;
+}
+
+export function getStudents(): StudentGroup[] {
+  if (!cachedStudents) {
+    cachedStudents = groupSessionsIntoStudents(getAllPatentRecords());
+  }
+  return cachedStudents;
+}
+
+export function getStudent(studentId: string): StudentGroup | undefined {
+  return getStudents().find((s) => s.studentId === studentId);
+}
+
+export function getStudentSessions(studentId: string): DatasetSession[] {
+  const student = getStudent(studentId);
+  return student ? student.sessions : [];
+}
+
+export function getSession(sessionId: string): DatasetSession | undefined {
+  if (!cachedSessions) {
+    cachedSessions = groupRecordsIntoSessions(getAllPatentRecords());
+  }
+  return cachedSessions.find((s) => s.sessionId === sessionId);
+}
+
+export function getLowStakesSessions(studentId: string): DatasetSession[] {
+  const student = getStudent(studentId);
+  return student ? student.lowStakesSessions : [];
+}
+
+export function getGradedSessions(studentId: string): DatasetSession[] {
+  const student = getStudent(studentId);
+  return student ? student.gradedSessions : [];
+}
+
+export function getRecordsForSession(sessionId: string): QuestionInteraction[] {
+  const sess = getSession(sessionId);
+  return sess ? sess.interactions : [];
+}
+
+// ─── Legacy / Compatibility Helpers ──────────────────────────────────────────
+
+export function getPatentStudents(): string[] {
+  return getStudents().map((s) => s.studentId);
+}
+
+export function getStudentPatentRecords(studentId: string): PatentRecord[] {
+  return getAllPatentRecords().filter((r) => r.student_id === studentId);
+}
+
+export function getStudentLowStakesRecords(studentId: string): PatentRecord[] {
+  return getAllPatentRecords().filter(
+    (r) => r.student_id === studentId && r.session_type === 'low_stakes'
+  );
+}
+
+export function getStudentGradedRecords(studentId: string): PatentRecord[] {
+  return getAllPatentRecords().filter(
+    (r) => r.student_id === studentId && r.session_type === 'graded'
+  );
+}
+
+export function getPatentRecordById(recordId: string): PatentRecord | undefined {
+  return getAllPatentRecords().find((r) => r.record_id === recordId);
+}
+
+export function getPatentSessionById(sessionId: string): PatentRecord | undefined {
+  return getAllPatentRecords().find((r) => r.session_id === sessionId);
+}
+
+export function getDatasetSummary(): DatasetSummary {
+  const records = getAllPatentRecords();
+  const studentIds = getPatentStudents();
+  const lowStakesCount = records.filter((r) => r.session_type === 'low_stakes').length;
+  const gradedCount = records.filter((r) => r.session_type === 'graded').length;
+  const flaggedCount = records.filter((r) => r.human_review_label === 'flagged_mock').length;
+
+  const deviceCounts: Record<string, number> = {};
+  records.forEach((r) => {
+    deviceCounts[r.device_type] = (deviceCounts[r.device_type] || 0) + 1;
+  });
+
+  return {
+    totalRecords: records.length,
+    totalStudents: studentIds.length,
+    studentIds,
+    lowStakesCount,
+    gradedCount,
+    deviceCounts,
+    flaggedCount,
+  };
+}
+
+// ─── Data Validation & Quality Diagnostics ───────────────────────────────────
+
+export function validateDataset(records: PatentRecord[] = getAllPatentRecords()): DataValidationReport {
+  const issues: DataValidationIssue[] = [];
+  const seenRecordIds = new Set<string>();
+
+  records.forEach((r, idx) => {
+    // 1. Missing IDs
+    if (!r.record_id || r.record_id.trim() === '') {
+      issues.push({
+        recordId: r.record_id,
+        field: 'record_id',
+        value: r.record_id,
+        severity: 'error',
+        message: `Row index ${idx}: Missing record_id.`,
+      });
+    }
+    if (!r.student_id || r.student_id.trim() === '') {
+      issues.push({
+        recordId: r.record_id,
+        studentId: r.student_id,
+        field: 'student_id',
+        value: r.student_id,
+        severity: 'error',
+        message: `Record ${r.record_id}: Missing student_id.`,
+      });
+    }
+    if (!r.session_id || r.session_id.trim() === '') {
+      issues.push({
+        recordId: r.record_id,
+        sessionId: r.session_id,
+        field: 'session_id',
+        value: r.session_id,
+        severity: 'error',
+        message: `Record ${r.record_id}: Missing session_id.`,
+      });
+    }
+
+    // 2. Duplicate record_id
+    if (r.record_id && seenRecordIds.has(r.record_id)) {
+      issues.push({
+        recordId: r.record_id,
+        field: 'record_id',
+        value: r.record_id,
+        severity: 'error',
+        message: `Duplicate record_id '${r.record_id}' detected.`,
+      });
+    } else if (r.record_id) {
+      seenRecordIds.add(r.record_id);
+    }
+
+    // 3. Invalid session_type
+    if (r.session_type !== 'low_stakes' && r.session_type !== 'graded') {
+      issues.push({
+        recordId: r.record_id,
+        field: 'session_type',
+        value: r.session_type,
+        severity: 'error',
+        message: `Record ${r.record_id}: Invalid session_type '${r.session_type}'. Must be 'low_stakes' or 'graded'.`,
+      });
+    }
+
+    // 4. Negative response times
+    if (typeof r.response_time_sec !== 'number' || r.response_time_sec < 0 || isNaN(r.response_time_sec)) {
+      issues.push({
+        recordId: r.record_id,
+        field: 'response_time_sec',
+        value: r.response_time_sec,
+        severity: 'error',
+        message: `Record ${r.record_id}: Invalid response_time_sec (${r.response_time_sec}). Must be non-negative number.`,
+      });
+    }
+
+    // 5. Impossible difficulty values (should be 0.0 to 1.0)
+    if (typeof r.question_difficulty !== 'number' || r.question_difficulty < 0 || r.question_difficulty > 1.0 || isNaN(r.question_difficulty)) {
+      issues.push({
+        recordId: r.record_id,
+        field: 'question_difficulty',
+        value: r.question_difficulty,
+        severity: 'warning',
+        message: `Record ${r.record_id}: Difficulty (${r.question_difficulty}) is outside expected range [0.0, 1.0].`,
+      });
+    }
+
+    // 6. Invalid binary fields
+    if (r.paste_detected !== 0 && r.paste_detected !== 1) {
+      issues.push({
+        recordId: r.record_id,
+        field: 'paste_detected',
+        value: r.paste_detected,
+        severity: 'error',
+        message: `Record ${r.record_id}: paste_detected (${r.paste_detected}) must be 0 or 1.`,
+      });
+    }
+    if (r.character_burst_flag !== 0 && r.character_burst_flag !== 1) {
+      issues.push({
+        recordId: r.record_id,
+        field: 'character_burst_flag',
+        value: r.character_burst_flag,
+        severity: 'error',
+        message: `Record ${r.record_id}: character_burst_flag (${r.character_burst_flag}) must be 0 or 1.`,
+      });
+    }
+
+    // 7. Invalid timestamp format
+    if (!r.timestamp || isNaN(new Date(r.timestamp.replace(' ', 'T')).getTime())) {
+      issues.push({
+        recordId: r.record_id,
+        field: 'timestamp',
+        value: r.timestamp,
+        severity: 'warning',
+        message: `Record ${r.record_id}: Malformed timestamp string '${r.timestamp}'.`,
+      });
+    }
+  });
+
+  const errorCount = issues.filter((i) => i.severity === 'error').length;
+  const warningCount = issues.filter((i) => i.severity === 'warning').length;
+  const duplicateCount = issues.filter((i) => i.message.includes('Duplicate')).length;
+
+  return {
+    isValid: errorCount === 0,
+    totalRecordsChecked: records.length,
+    errorCount,
+    warningCount,
+    duplicateCount,
+    issues,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+export function getDatasetStatus(): DatasetStatusSummary {
+  const records = getAllPatentRecords();
+  const students = getStudents();
+  const sessions = groupRecordsIntoSessions(records);
+  const validation = validateDataset(records);
+  const summary = getDatasetSummary();
+
+  return {
+    totalRecords: records.length,
+    totalStudents: students.length,
+    totalSessions: sessions.length,
+    lowStakesRecords: summary.lowStakesCount,
+    gradedRecords: summary.gradedCount,
+    deviceCounts: summary.deviceCounts,
+    flaggedRecords: summary.flaggedCount,
+    dataQualityStatus: validation.isValid ? '100% Valid' : 'Issues Detected',
+    validationReport: validation,
+    sourceComposition: SOURCE_DATASET_COMPOSITION,
+    isSyntheticPrototype: true,
+  };
+}
+

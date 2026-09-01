@@ -60,11 +60,14 @@ export function CardHeader({
   title,
   subtitle,
   action,
+  badge,
 }: {
   title: string;
   subtitle?: string;
   action?: React.ReactNode;
+  badge?: React.ReactNode;
 }) {
+  const rightElement = badge || action;
   return (
     <div className="flex items-center justify-between w-full">
       <div>
@@ -73,7 +76,7 @@ export function CardHeader({
           <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>
         )}
       </div>
-      {action && <div>{action}</div>}
+      {rightElement && <div>{rightElement}</div>}
     </div>
   );
 }

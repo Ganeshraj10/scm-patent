@@ -27,36 +27,60 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // refreshing the auth token
+  // 1. Check Supabase authenticated user
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Basic routing protection
-  // Determine if this is a protected route
-  const isProtectedStudentRoute = request.nextUrl.pathname.startsWith('/student');
-  const isProtectedInstructorRoute = request.nextUrl.pathname.startsWith('/instructor');
+  // 2. Check Session Role Cookie (for seamless 3-role switching and demo accounts)
+  const cookieRole = request.cookies.get('examguard_role')?.value;
 
-  if (!user && (isProtectedStudentRoute || isProtectedInstructorRoute)) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
-  }
+  const pathname = request.nextUrl.pathname;
+  const isProtectedStudentRoute = pathname.startsWith('/student');
+  const isProtectedInstructorRoute = pathname.startsWith('/instructor');
+  const isProtectedAdminRoute = pathname.startsWith('/admin');
+  const isProtectedRoute = isProtectedStudentRoute || isProtectedInstructorRoute || isProtectedAdminRoute;
 
-  if (user && (isProtectedStudentRoute || isProtectedInstructorRoute)) {
+  // Determine effective authenticated role
+  let role: string | null = cookieRole || null;
+
+  if (user && !role) {
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .maybeSingle();
 
-    const canUseStudentArea = profile?.role === 'student';
-    const canUseInstructorArea = profile?.role === 'instructor' || profile?.role === 'admin';
+    role = profile?.role || 'student';
+  }
 
-    if ((isProtectedStudentRoute && !canUseStudentArea) ||
-        (isProtectedInstructorRoute && !canUseInstructorArea)) {
+  // If unauthenticated and trying to access protected route
+  if (!user && !role && isProtectedRoute) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
+  }
+
+  // Enforce role-based access control
+  if (role && isProtectedRoute) {
+    // Admin Routes: Only admin allowed
+    if (isProtectedAdminRoute && role !== 'admin') {
       const url = request.nextUrl.clone();
-      url.pathname = profile?.role === 'student' ? '/student/dashboard' : '/instructor/dashboard';
+      url.pathname = '/access-denied';
+      return NextResponse.redirect(url);
+    }
+
+    // Instructor Routes: Only instructor and admin allowed
+    if (isProtectedInstructorRoute && role !== 'instructor' && role !== 'admin') {
+      const url = request.nextUrl.clone();
+      url.pathname = '/access-denied';
+      return NextResponse.redirect(url);
+    }
+
+    // Student Routes: Students (or admin oversight) allowed
+    if (isProtectedStudentRoute && role !== 'student' && role !== 'admin') {
+      const url = request.nextUrl.clone();
+      url.pathname = '/access-denied';
       return NextResponse.redirect(url);
     }
   }

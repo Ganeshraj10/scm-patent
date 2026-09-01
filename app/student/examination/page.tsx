@@ -1,29 +1,56 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import Link from 'next/link';
+import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { ProgressBar } from '@/components/ui/ProgressBar';
+import {
+  validationExamQuestions,
+  VALIDATION_EXAM_CODE,
+  VALIDATION_EXAM_TITLE,
+} from '@/data/validationExamQuestions';
+import {
+  createGradedExamSession,
+  saveQuestionTelemetry,
+  completeGradedExamSession,
+} from '@/lib/services/examSessionService';
+import {
+  QuestionTelemetryState,
+  createInitialTelemetryState,
+  finalizeQuestionTelemetry,
+  recordMCQSelection,
+  recordMultiSelectToggle,
+  recordTextChange,
+  recordCodeEdit,
+  recordCodeRun,
+  recordPasteEvent,
+  detectDeviceType,
+} from '@/lib/services/examFeatureExtractor';
+import { Question, GradedExamSession } from '@/types';
+import { MCQView } from '@/components/examination/MCQView';
+import { MultipleSelectView } from '@/components/examination/MultipleSelectView';
+import { ShortAnswerView } from '@/components/examination/ShortAnswerView';
+import { CodingEditorView } from '@/components/examination/CodingEditorView';
 import {
   Clock,
   ChevronLeft,
   ChevronRight,
-  Send,
-  Lock
+  ShieldCheck,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowRight,
+  BookOpen,
+  Code2,
+  CheckSquare,
+  FileText,
+  HelpCircle,
 } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
-import { ProgressBar } from '@/components/ui/ProgressBar';
-import { getAllQuestions } from '@/lib/services/assessments';
-import { getCurrentStudentProfile } from '@/lib/services/students';
-import type { Question } from '@/types';
-import { saveExamSession, getTrackedSessionsByStudent, getStudentSessions } from '@/lib/services/sessions';
-import type { ExamSessionCreateInput, BehavioralFeatureInput, FeatureContributionInput } from '@/lib/services/sessions';
-import { getSessionsByStudentId } from '@/data/mockSessions';
-import { useBehavioralTracker } from '@/lib/trackingEngine';
-import { buildBehavioralModel } from '@/lib/modelingEngine';
-import { evaluateSessionDeviation } from '@/lib/deviationEngine';
-import { generateAndSaveCommitment } from '@/lib/services/provenance';
-type SessionPhase = 'loading' | 'intro' | 'active' | 'submitting' | 'persist_error';
 
-const TOTAL_TIME_SECONDS = 45 * 60; // 45 minutes for 30 questions
+type ExamPhase = 'intro' | 'active' | 'completed';
+
+const EXAM_DURATION_SECONDS = 25 * 60; // 25 minutes for validation exam
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -32,434 +59,663 @@ function formatTime(seconds: number): string {
 }
 
 export default function ExaminationPage() {
-  const router = useRouter();
-  const [phase, setPhase] = useState<SessionPhase>('loading');
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [timeLeft, setTimeLeft] = useState(TOTAL_TIME_SECONDS);
-  const [submittingStep, setSubmittingStep] = useState(0);
-  const [examQuestions, setExamQuestions] = useState<Question[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [persistError, setPersistError] = useState<string | null>(null);
-  const [studentDbId, setStudentDbId] = useState<string | null>(null);
-  const examStartedAt = useRef<string>(new Date().toISOString());
+  const [phase, setPhase] = useState<ExamPhase>('intro');
+  const [studentId, setStudentId] = useState<string>('S001');
+  const [questions, setQuestions] = useState<Question[]>(validationExamQuestions);
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  
+  // Student answer state
+  const [answers, setAnswers] = useState<Record<number, any>>({});
+  const [timeLeft, setTimeLeft] = useState<number>(EXAM_DURATION_SECONDS);
+  const [session, setSession] = useState<GradedExamSession | null>(null);
+  const [showConfirmSubmit, setShowConfirmSubmit] = useState<boolean>(false);
 
-  // Load questions and authentic student profile
-  useEffect(() => {
-    Promise.all([
-      getAllQuestions(),
-      getCurrentStudentProfile()
-    ])
-      .then(([qs, profile]) => {
-        if (!profile) {
-          setLoadError('Your student profile could not be loaded.');
-          return;
-        }
-        setStudentDbId(profile.id);
-        
-        // Build 30 questions from base 10 (a/b/c variants) — preserves existing exam behaviour
-        const base = qs.length > 0 ? qs : [];
-        const expanded = [
-          ...base.map((q) => ({ ...q, id: `${q.id}-a` })),
-          ...base.map((q) => ({ ...q, id: `${q.id}-b` })),
-          ...base.map((q) => ({ ...q, id: `${q.id}-c` })),
-        ];
-        setExamQuestions(expanded);
-        setPhase('intro');
-      })
-      .catch((err) => {
-        console.error('[Examination] Failed to load data:', err);
-        setLoadError(err.message ?? 'Failed to load exam questions.');
-      });
-  }, []);
+  // Active question telemetry state ref
+  const telemetryMap = useRef<Record<number, QuestionTelemetryState>>({});
+  const lastMousePos = useRef<{ x: number; y: number } | null>(null);
+  const lastScrollY = useRef<number | null>(null);
 
-  const current = examQuestions[currentIndex] ?? { id: '', text: '', options: [], correctIndex: 0, difficulty: 1, topic: '', examCode: '' };
-  const progress = ((currentIndex + 1) / examQuestions.length) * 100;
-  const answeredCount = Object.keys(answers).length;
-  const isLastQuestion = currentIndex === examQuestions.length - 1;
+  // Initialize active question telemetry state
+  const initializeQuestionTelemetry = useCallback((index: number, questionList: Question[]) => {
+    if (!questionList[index]) return;
+    const q = questionList[index];
 
-  // Behavioral Tracking
-  const tracker = useBehavioralTracker(phase === 'active', current.id);
-
-  // Timer
-  useEffect(() => {
-    if (phase !== 'active') return;
-    if (timeLeft <= 0) {
-      handleSubmit();
-      return;
-    }
-    const id = setInterval(() => setTimeLeft((t) => t - 1), 1000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, timeLeft]);
-
-  const handleAnswer = (optionIndex: number) => {
-    if (answers[current.id] !== undefined && answers[current.id] !== optionIndex) {
-      tracker.recordRevision();
-    }
-    setAnswers((prev) => ({ ...prev, [current.id]: optionIndex }));
-  };
-
-  const handleNext = () => {
-    if (currentIndex < examQuestions.length - 1) setCurrentIndex((i) => i + 1);
-  };
-
-  const handlePrev = () => {
-    if (currentIndex > 0) setCurrentIndex((i) => i - 1);
-  };
-
-  const handleSubmit = useCallback(async () => {
-    if (!studentDbId) {
-      setPersistError('Student identity missing.');
-      setPhase('persist_error');
-      return;
-    }
-    
-    setPhase('submitting');
-    setPersistError(null);
-    
-    // Grab the final tracked data snapshot
-    const rawTrackedData = tracker.getFinalData();
-    const submittedAt = new Date().toISOString();
-
-    // UI Steps simulation
-    const steps = [
-      'Finalizing responses…',
-      'Securing session data…',
-      'Encrypting behavioral payload…',
-      'Transmitting to ExamGuard…',
-    ];
-
-    for (let i = 0; i < steps.length - 1; i++) {
-      await new Promise((r) => setTimeout(r, 600));
-      setSubmittingStep(i + 1);
-    }
-
-    // ── Build per-question feature list ────────────────────
-    const questionIds = Object.keys(rawTrackedData);
-    const numQuestions = questionIds.length || 1;
-    let totalTime = 0, totalPointer = 0, totalScroll = 0, totalRevisions = 0, totalPaste = 0;
-    
-    const featuresList: BehavioralFeatureInput[] = questionIds.map((id, idx) => {
-      const d = rawTrackedData[id];
-      totalTime     += d.responseTimeMs;
-      totalPointer  += d.pointerMovementPx;
-      totalScroll   += d.scrollDistancePx;
-      totalRevisions += d.revisionCount;
-      totalPaste    += d.pasteCount;
-      return {
-        questionId:       id,
-        responseTime:     d.responseTimeMs,
-        pointerMovement:  d.pointerMovementPx,
-        scrollDistance:   d.scrollDistancePx,
-        revisionCount:    d.revisionCount,
-        pasteDetected:    d.pasteCount > 0,
-        deviceType:       'desktop' as const,
-        sessionPosition:  idx,
-        eventTimestamp:   submittedAt,
-      };
-    });
-
-    // ── Build session for deviation engine ─────────────────
-    const rawSessionForEngine: any = {
-      id:           `engine-${Date.now()}`,
-      studentId:    studentDbId || '',
-      studentName:  'Student',
-      examName:     'Data Structures & Algorithms Final',
-      examCode:     'CS301-FINAL',
-      type:         'graded_examination',
-      date:         submittedAt,
-      duration:     Math.round((TOTAL_TIME_SECONDS - timeLeft) / 60),
-      questionCount: examQuestions.length,
-      deviceType:   'desktop',
-      features: questionIds.map((id) => ({
-        questionId:      id,
-        responseTime:    rawTrackedData[id].responseTimeMs,
-        pointerMovement: rawTrackedData[id].pointerMovementPx,
-        scrollDistance:  rawTrackedData[id].scrollDistancePx,
-        revisionCount:   rawTrackedData[id].revisionCount,
-        pasteDetected:   rawTrackedData[id].pasteCount > 0,
-        deviceType:      'desktop',
-      })),
-    };
-
-    // ── Evaluate deviation ─────────────────────────────────
-    // Build a client-side temporary model representation to calculate deviations in the browser
-    const examSessions    = await getStudentSessions(studentDbId || '');
-    const trackedSessions = await getTrackedSessionsByStudent(studentDbId || '');
-    const uniqueSessionsMap = new Map();
-    [...examSessions, ...trackedSessions].forEach(s => uniqueSessionsMap.set(s.id, s));
-    const uniqueSessions  = Array.from(uniqueSessionsMap.values());
-    const model           = buildBehavioralModel(studentDbId || '', uniqueSessions);
-
-    // ── Evaluate deviation ─────────────────────────────────
-    const analysis  = evaluateSessionDeviation(rawSessionForEngine, model);
-    const isLimited = (analysis as any).rawStatus === 'analysis_limited';
-    const finalStatus = isLimited ? 'normal'
-                       : analysis.reviewRequired ? 'review_required'
-                       : 'normal';
-
-    // ── Map feature contributions for persistence ──────────
-    const contributions: FeatureContributionInput[] = analysis.featureContributions.map((c) => ({
-      feature:      c.feature,
-      observed:     isFinite(c.observed)     ? c.observed     : 0,
-      expected:     isFinite(c.expected)     ? c.expected     : 0,
-      deviation:    isFinite(c.deviation)    ? c.deviation    : 0,
-      contribution: isFinite(c.contribution) ? c.contribution : 0,
-      direction:    (c as any).direction ?? 'within_expected_range',
-    }));
-
-    // ── Advance submitting step ────────────────────────────
-    setSubmittingStep(steps.length);
-    await new Promise((r) => setTimeout(r, 400));
-
-    // ── Persist to Supabase (atomic) ───────────────────────
-    const input: ExamSessionCreateInput = {
-      studentId:            studentDbId || '', // Resolved via auth
-      deviceType:           'desktop',
-      startedAt:            examStartedAt.current,
-      submittedAt,
-      deviationScore:       isFinite(analysis.deviationScore) ? analysis.deviationScore : 0,
-      personalizedThreshold: isFinite(analysis.personalizedThreshold) ? analysis.personalizedThreshold : 0,
-      confidence:           isFinite(analysis.confidence) ? analysis.confidence : 0,
-      reviewStatus:         finalStatus,
-      features:             featuresList,
-      featureContributions: contributions,
-    };
-
-    try {
-      const result = await saveExamSession(input);
-      
-      // Now that we have the real ID, generate and persist the cryptographic commitment
-      const completeSession = {
-        id: result.sessionId,
-        studentId: input.studentId,
-        deviceType: input.deviceType,
-        date: input.startedAt,
-        features: rawSessionForEngine.features,
-      };
-      
-      // Async generation and API transmission
-      await generateAndSaveCommitment(completeSession);
-
-      router.push(`/student/results/${result.sessionId}`);
-    } catch (err: any) {
-      console.error('[Examination] Failed to persist exam session:', err);
-      setPersistError(err.message ?? 'Failed to save your exam. Please contact support.');
-      setPhase('persist_error');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [answers, timeLeft, router, examQuestions.length, studentDbId]);
-
-  const submittingSteps = [
-    'Finalizing responses…',
-    'Securing session data…',
-    'Encrypting behavioral payload…',
-    'Transmitting to ExamGuard…',
-  ];
-
-  // ── Persist Error ─────────────────────────────────────────
-  if (phase === 'persist_error') {
-    return (
-      <div className="max-w-xl mx-auto py-16 flex flex-col items-center text-center gap-6">
-        <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center">
-          <span className="text-rose-400 text-2xl">!</span>
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-text-primary mb-2">Submission Failed</h2>
-          <p className="text-sm text-text-secondary leading-relaxed">
-            Your exam was completed successfully, but we encountered an error while saving your results.
-          </p>
-          <p className="text-xs text-rose-400 mt-3 font-mono break-all">{persistError}</p>
-        </div>
-        <div className="flex gap-3">
-          <Button variant="secondary" onClick={() => router.push('/student/dashboard')}>
-            Go to Dashboard
-          </Button>
-          <Button variant="primary" onClick={() => { setPhase('submitting'); setSubmittingStep(0); handleSubmit(); }}>
-            Retry Submission
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Loading ──────────────────────────────────────────────
-  if (phase === 'loading') {
-    if (loadError) {
-      return (
-        <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4">
-          <h2 className="text-lg font-semibold text-text-primary mb-2">Error</h2>
-          <p className="text-sm text-rose-400">{loadError}</p>
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={() => router.push('/student/dashboard')}>Dashboard</Button>
-            <Button variant="primary" onClick={() => window.location.reload()}>Retry</Button>
-          </div>
-        </div>
+    if (!telemetryMap.current[index]) {
+      const initialContent = (q.type === 'coding' || q.type === 'debugging') ? (q.starterCode || '') : '';
+      telemetryMap.current[index] = createInitialTelemetryState(
+        q.id,
+        index + 1,
+        q.difficulty || 0.5,
+        q.type || 'mcq',
+        initialContent
       );
     }
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-      </div>
+    telemetryMap.current[index].startTimeMs = Date.now();
+    lastMousePos.current = null;
+    lastScrollY.current = typeof window !== 'undefined' ? window.scrollY : null;
+  }, []);
+
+  // Finalize current question metrics before navigating
+  const flushCurrentQuestionTelemetry = useCallback(() => {
+    if (!session || !telemetryMap.current[currentIndex]) return;
+
+    const state = telemetryMap.current[currentIndex];
+    const currentQ = questions[currentIndex];
+    if (state.startTimeMs !== null) {
+      state.totalTimeMs += Date.now() - state.startTimeMs;
+      state.startTimeMs = null;
+    }
+
+    // Determine correctness
+    let isAnswerCorrect = false;
+    if (currentQ) {
+      if (currentQ.type === 'mcq') {
+        isAnswerCorrect = state.selectedAnswerIndex !== null && state.selectedAnswerIndex === currentQ.correctIndex;
+      } else if (currentQ.type === 'multiple_select') {
+        const expected = (currentQ.correctIndices || []).slice().sort().join(',');
+        const actual = (state.selectedAnswerIndices || []).slice().sort().join(',');
+        isAnswerCorrect = expected === actual && actual.length > 0;
+      } else if (currentQ.type === 'short_answer') {
+        isAnswerCorrect = state.textAnswer.trim().length >= (currentQ.minWordCount || 10) * 4;
+      } else if (currentQ.type === 'coding' || currentQ.type === 'debugging') {
+        isAnswerCorrect = state.testCasesTotal > 0 && state.testCasesPassed === state.testCasesTotal;
+      }
+    }
+
+    const telemetry = finalizeQuestionTelemetry(
+      state,
+      session.sessionId,
+      session.studentId,
+      session.deviceType,
+      isAnswerCorrect
     );
-  }
 
-  // ── Intro ──────────────────────────────────────────────────
-  if (phase === 'intro') {
-    return (
-      <div className="max-w-2xl mx-auto space-y-6">
-        <div>
-          <h2 className="text-xl font-semibold text-text-primary">Graded Examination</h2>
-          <p className="text-sm text-text-muted mt-0.5">
-            Data Structures & Algorithms (CS301-FINAL)
-          </p>
-        </div>
+    saveQuestionTelemetry(session.sessionId, telemetry);
+  }, [session, currentIndex, questions]);
 
-        <div className="bg-surface-800 border border-border rounded-xl p-6 space-y-4">
-          <div className="flex items-center gap-3 pb-4 border-b border-border">
-            <Lock className="text-emerald-400" size={20} />
-            <p className="text-sm font-medium text-text-primary">ExamGuard Integrity Active</p>
-          </div>
-          <p className="text-sm text-text-secondary leading-relaxed">
-            This is a 30-question graded examination. Once you begin, your interactions (timing, pointer movement, revisions, etc.) will be securely tracked and compared against your personalized behavioral model.
-          </p>
-          <ul className="text-xs text-text-muted list-disc list-inside space-y-1.5 ml-1">
-            <li>Ensure you have a stable internet connection.</li>
-            <li>Do not switch tabs or use external tools.</li>
-            <li>You have 45 minutes to complete the examination.</li>
-          </ul>
+  // Start Exam Action
+  const handleStartExam = () => {
+    const examQuestions = questions.length > 0 ? questions : validationExamQuestions;
+    if (questions.length === 0) {
+      setQuestions(examQuestions);
+    }
 
-          <div className="pt-4 flex justify-end">
-            <Button variant="primary" onClick={() => setPhase('active')}>
-              Start Examination
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    const newSession = createGradedExamSession({
+      studentId,
+      examId: VALIDATION_EXAM_CODE,
+      examTitle: VALIDATION_EXAM_TITLE,
+      questionCount: examQuestions.length,
+      deviceType: detectDeviceType(),
+    });
 
-  // ── Submitting ──────────────────────────────────────────────
-  if (phase === 'submitting') {
-    return (
-      <div className="max-w-xl mx-auto py-12 flex flex-col items-center text-center space-y-8">
-        <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
-        <div className="space-y-2">
-          <h2 className="text-xl font-semibold text-text-primary">Submitting Examination</h2>
-          <p className="text-sm text-text-muted">Please do not close this window.</p>
-        </div>
-        <div className="w-full max-w-sm space-y-3 text-left">
-          {submittingSteps.map((step, i) => (
-            <div key={i} className={`flex items-center gap-3 text-sm transition-opacity duration-500 ${i <= submittingStep ? 'opacity-100' : 'opacity-0'}`}>
-              {i < submittingStep ? (
-                <div className="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center">
-                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                </div>
-              ) : (
-                <div className="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-              )}
-              <span className={i < submittingStep ? 'text-text-secondary' : 'text-indigo-400 font-medium'}>
-                {step}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+    setSession(newSession);
+    initializeQuestionTelemetry(0, examQuestions);
+    setPhase('active');
+  };
 
-  // ── Active Exam ───────────────────────────────────────────
+  // Timer countdown
+  useEffect(() => {
+    if (phase !== 'active') return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          handleSubmitExam();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [phase]);
+
+  // Mouse movement tracking (Euclidean distance & speed)
+  useEffect(() => {
+    if (phase !== 'active') return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const state = telemetryMap.current[currentIndex];
+      if (!state) return;
+
+      if (lastMousePos.current) {
+        const dx = e.clientX - lastMousePos.current.x;
+        const dy = e.clientY - lastMousePos.current.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        state.pointerDistancePx += dist;
+        state.pointerSampleCount += 1;
+      }
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
+    };
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [phase, currentIndex]);
+
+  // Scroll tracking (Distance & Events)
+  useEffect(() => {
+    if (phase !== 'active') return;
+
+    const handleScroll = () => {
+      const state = telemetryMap.current[currentIndex];
+      if (!state) return;
+
+      const currentScrollY = window.scrollY;
+      if (lastScrollY.current !== null) {
+        const delta = Math.abs(currentScrollY - lastScrollY.current);
+        state.scrollDistancePx += delta;
+        state.scrollEventsCount += 1;
+      }
+      lastScrollY.current = currentScrollY;
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [phase, currentIndex]);
+
+  // Global window paste listener
+  useEffect(() => {
+    if (phase !== 'active') return;
+
+    const handlePaste = () => {
+      const state = telemetryMap.current[currentIndex];
+      if (state) {
+        recordPasteEvent(state);
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [phase, currentIndex]);
+
+  // Visibility change handling
+  useEffect(() => {
+    if (phase !== 'active') return;
+
+    const handleVisibility = () => {
+      const state = telemetryMap.current[currentIndex];
+      if (!state) return;
+
+      if (document.hidden) {
+        if (state.startTimeMs !== null) {
+          state.totalTimeMs += Date.now() - state.startTimeMs;
+          state.startTimeMs = null;
+        }
+      } else {
+        state.startTimeMs = Date.now();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [phase, currentIndex]);
+
+  // ─── Interaction Handlers ──────────────────────────────────────────────────
+
+  const handleMCQSelect = (optionIndex: number) => {
+    const state = telemetryMap.current[currentIndex];
+    if (state) {
+      recordMCQSelection(state, optionIndex);
+    }
+    setAnswers((prev) => ({ ...prev, [currentIndex]: optionIndex }));
+  };
+
+  const handleMultiSelectToggle = (optionIndex: number) => {
+    const state = telemetryMap.current[currentIndex];
+    if (state) {
+      const updated = recordMultiSelectToggle(state, optionIndex);
+      setAnswers((prev) => ({ ...prev, [currentIndex]: updated }));
+    }
+  };
+
+  const handleShortAnswerChange = (text: string) => {
+    const state = telemetryMap.current[currentIndex];
+    if (state) {
+      recordTextChange(state, text);
+    }
+    setAnswers((prev) => ({ ...prev, [currentIndex]: text }));
+  };
+
+  const handleCodeChange = (code: string) => {
+    const state = telemetryMap.current[currentIndex];
+    if (state) {
+      recordCodeEdit(state, code);
+    }
+    setAnswers((prev) => ({ ...prev, [currentIndex]: code }));
+  };
+
+  const handleCodeRun = (passed: number, total: number) => {
+    const state = telemetryMap.current[currentIndex];
+    if (state) {
+      recordCodeRun(state, passed, total);
+    }
+  };
+
+  const handleSpecificPaste = () => {
+    const state = telemetryMap.current[currentIndex];
+    if (state) {
+      recordPasteEvent(state);
+    }
+  };
+
+  const handleGoToQuestion = (targetIndex: number) => {
+    if (targetIndex < 0 || targetIndex >= questions.length || targetIndex === currentIndex) return;
+
+    flushCurrentQuestionTelemetry();
+    setCurrentIndex(targetIndex);
+    initializeQuestionTelemetry(targetIndex, questions);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSubmitExam = () => {
+    flushCurrentQuestionTelemetry();
+    if (session) {
+      completeGradedExamSession(session.sessionId);
+    }
+    setPhase('completed');
+  };
+
+  const answeredCount = Object.keys(answers).length;
+  const currentQ = questions[currentIndex];
+  const progressPct = questions.length > 0 ? ((currentIndex + 1) / questions.length) * 100 : 0;
+
+  const getTypeBadge = (type?: string) => {
+    switch (type) {
+      case 'multiple_select':
+        return <Badge variant="verified" size="sm">Multiple Select</Badge>;
+      case 'short_answer':
+        return <Badge variant="medium" size="sm">Short Answer</Badge>;
+      case 'coding':
+        return <Badge variant="graded" size="sm">Coding Problem</Badge>;
+      case 'debugging':
+        return <Badge variant="review_required" size="sm">Code Debugging</Badge>;
+      default:
+        return <Badge variant="default" size="sm">Multiple Choice</Badge>;
+    }
+  };
+
   return (
-    <div className="max-w-3xl mx-auto flex flex-col h-[calc(100vh-8rem)]">
-      {/* Top Bar */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-sm font-semibold text-text-primary">CS301-FINAL</h2>
-          <p className="text-xs text-text-muted">Question {currentIndex + 1} of {examQuestions.length}</p>
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* ─── PHASE 1: INTRO & PRIVACY SCREEN ─── */}
+      {phase === 'intro' && (
+        <Card padding="lg" className="border-indigo-500/30 shadow-2xl">
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/80 pb-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    Stage 7 Behavioral Validation
+                  </span>
+                  <Badge variant="active" size="sm">
+                    Student ID: {studentId}
+                  </Badge>
+                </div>
+                <h1 className="text-2xl font-black text-text-primary mt-1 tracking-tight">
+                  {VALIDATION_EXAM_TITLE}
+                </h1>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Assessment Code: {VALIDATION_EXAM_CODE} · Multi-Format Technical Validation
+                </p>
+              </div>
+
+              {/* Student identity switcher */}
+              <div className="flex items-center gap-1 bg-surface-700/60 p-1.5 rounded-xl border border-border text-xs">
+                <span className="text-[11px] text-text-muted px-1.5">Student:</span>
+                {['S001', 'S002', 'S003', 'S004'].map((sId) => (
+                  <button
+                    key={sId}
+                    type="button"
+                    onClick={() => setStudentId(sId)}
+                    className={`px-2 py-0.5 rounded text-xs font-mono font-bold transition-all ${
+                      studentId === sId ? 'bg-indigo-600 text-white' : 'text-text-muted hover:text-text-primary'
+                    }`}
+                  >
+                    {sId}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Exam Parameters Overview */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 rounded-xl bg-surface-700/30 border border-border">
+                <span className="text-[10px] text-text-muted block">Duration</span>
+                <span className="text-base font-bold text-text-primary font-mono">25 Minutes</span>
+              </div>
+              <div className="p-3 rounded-xl bg-surface-700/30 border border-border">
+                <span className="text-[10px] text-text-muted block">Total Questions</span>
+                <span className="text-base font-bold text-text-primary font-mono">{questions.length} Questions</span>
+              </div>
+              <div className="p-3 rounded-xl bg-surface-700/30 border border-border">
+                <span className="text-[10px] text-text-muted block">Question Formats</span>
+                <span className="text-xs font-bold text-indigo-300">MCQ, MSQ, Text, Code, Debug</span>
+              </div>
+              <div className="p-3 rounded-xl bg-surface-700/30 border border-border">
+                <span className="text-[10px] text-text-muted block">Environment</span>
+                <span className="text-base font-bold text-emerald-400 font-mono">Graded Exam</span>
+              </div>
+            </div>
+
+            {/* Formats Included */}
+            <div className="p-4 rounded-xl bg-surface-700/20 border border-border/70 text-xs space-y-2">
+              <span className="font-bold text-text-primary block text-xs">Supported Question Types in this Exam:</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-text-secondary text-[11px]">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
+                  <span><strong>Multiple Choice & Multiple Select</strong> (Single & Multi-Select)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0" />
+                  <span><strong>Short Answer</strong> (Algorithmic explanations & analysis)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                  <span><strong>Coding Problems</strong> (Python/JS with in-browser runner)</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                  <span><strong>Code Debugging</strong> (Fixing faulty recursive logic)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Privacy & Data Minimization UX Notice */}
+            <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2">
+              <div className="flex items-center gap-2 text-indigo-300 font-bold text-xs">
+                <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
+                <span>Examination Integrity & Privacy Notice</span>
+              </div>
+              <p className="text-[11px] text-text-muted leading-relaxed">
+                ExamGuard collects derived interaction metrics (response time, cursor movement speed, code revision frequency, and scroll activity) to validate examination integrity.
+              </p>
+              <div className="p-2.5 rounded-lg bg-surface-900/80 border border-border/80 text-[11px] text-emerald-400/90 font-medium space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 size={13} className="text-emerald-400" />
+                  <span>Privacy Guarantees:</span>
+                </div>
+                <p className="text-[10px] text-text-muted pl-4">
+                  The system does <strong>NOT</strong> collect audio, video, webcam streams, raw keystrokes, or clipboard text contents.
+                </p>
+              </div>
+            </div>
+
+            {/* Start Button */}
+            <div className="pt-2 flex justify-end">
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={handleStartExam}
+                className="text-sm font-bold shadow-lg shadow-indigo-500/20 px-8"
+              >
+                Start Validation Examination
+                <ArrowRight size={16} className="ml-2" />
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* ─── PHASE 2: ACTIVE EXAMINATION ─── */}
+      {phase === 'active' && currentQ && (
+        <div className="space-y-5">
+          {/* Top Exam Header Bar */}
+          <Card padding="sm" className="bg-surface-800/90 border-border">
+            <div className="p-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
+                    Graded Validation Session
+                  </span>
+                  {getTypeBadge(currentQ.type)}
+                </div>
+                <h2 className="text-sm font-bold text-text-primary">
+                  {VALIDATION_EXAM_TITLE}
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-4">
+                {/* Timer */}
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono text-xs font-bold border ${
+                    timeLeft < 300
+                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                      : 'bg-surface-700 text-text-primary border-border'
+                  }`}
+                >
+                  <Clock size={14} className={timeLeft < 300 ? 'text-rose-400' : 'text-indigo-400'} />
+                  <span>{formatTime(timeLeft)}</span>
+                </div>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowConfirmSubmit(true)}
+                  className="text-xs font-semibold"
+                >
+                  Submit Exam
+                </Button>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="px-2 pb-1">
+              <div className="flex items-center justify-between text-[10px] text-text-muted mb-1">
+                <span>
+                  Question {currentIndex + 1} of {questions.length} · {currentQ.title || `Question ${currentIndex + 1}`}
+                </span>
+                <span>{answeredCount} Answered</span>
+              </div>
+              <ProgressBar value={progressPct} size="xs" color="indigo" />
+            </div>
+          </Card>
+
+          {/* Question Navigation Palette */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            {questions.map((q, idx) => {
+              const isAnswered = answers[idx] !== undefined;
+              const isCurrent = idx === currentIndex;
+              return (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => handleGoToQuestion(idx)}
+                  className={`w-8 h-8 rounded-lg text-xs font-bold font-mono transition-all shrink-0 ${
+                    isCurrent
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/30 scale-105'
+                      : isAnswered
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-surface-700 text-text-muted hover:text-text-primary border border-border'
+                  }`}
+                >
+                  {idx + 1}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active Question Card */}
+          <Card padding="lg" className="border-border space-y-6">
+            {/* Question Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold font-mono">
+                  Q{currentIndex + 1}
+                </span>
+                <h3 className="text-sm font-bold text-text-primary">{currentQ.title || currentQ.topic}</h3>
+              </div>
+              <div className="flex items-center gap-3 text-[11px] text-text-muted font-mono">
+                <span>Topic: <strong className="text-text-secondary">{currentQ.topic}</strong></span>
+                <span>·</span>
+                <span>Difficulty: <strong className="text-sky-400">{currentQ.difficulty?.toFixed(2) || '0.50'}</strong></span>
+              </div>
+            </div>
+
+            {/* Question Prompt */}
+            <div className="text-sm font-semibold text-text-primary leading-relaxed">
+              {currentQ.text}
+            </div>
+
+            {/* Dynamic Question Type View */}
+            {currentQ.type === 'multiple_select' ? (
+              <MultipleSelectView
+                question={currentQ}
+                selectedIndices={answers[currentIndex] || []}
+                onToggleOption={handleMultiSelectToggle}
+              />
+            ) : currentQ.type === 'short_answer' ? (
+              <ShortAnswerView
+                question={currentQ}
+                textAnswer={answers[currentIndex] || ''}
+                onChange={handleShortAnswerChange}
+                onPaste={handleSpecificPaste}
+              />
+            ) : currentQ.type === 'coding' || currentQ.type === 'debugging' ? (
+              <CodingEditorView
+                question={currentQ}
+                codeAnswer={answers[currentIndex] !== undefined ? answers[currentIndex] : (currentQ.starterCode || '')}
+                onCodeChange={handleCodeChange}
+                onPaste={handleSpecificPaste}
+                onCodeRun={handleCodeRun}
+              />
+            ) : (
+              <MCQView
+                question={currentQ}
+                selectedIndex={answers[currentIndex] !== undefined ? answers[currentIndex] : null}
+                onSelectOption={handleMCQSelect}
+              />
+            )}
+
+            {/* Navigation Buttons Footer */}
+            <div className="flex items-center justify-between pt-4 border-t border-border">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleGoToQuestion(currentIndex - 1)}
+                disabled={currentIndex === 0}
+                className="text-xs"
+              >
+                <ChevronLeft size={14} className="mr-1" />
+                Previous Question
+              </Button>
+
+              {currentIndex < questions.length - 1 ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => handleGoToQuestion(currentIndex + 1)}
+                  className="text-xs font-bold"
+                >
+                  Next Question
+                  <ChevronRight size={14} className="ml-1" />
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setShowConfirmSubmit(true)}
+                  className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30 font-bold"
+                >
+                  Finish & Submit Exam
+                  <CheckCircle2 size={14} className="ml-1.5" />
+                </Button>
+              )}
+            </div>
+          </Card>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-text-secondary bg-surface-800 px-3 py-1.5 rounded-lg border border-border">
-            <Clock size={14} className={timeLeft < 300 ? 'text-amber-400 animate-pulse' : 'text-indigo-400'} />
-            <span className={`text-sm font-medium tabular-nums ${timeLeft < 300 ? 'text-amber-400' : ''}`}>
-              {formatTime(timeLeft)}
-            </span>
+      )}
+
+      {/* ─── PHASE 3: SUBMISSION COMPLETED ─── */}
+      {phase === 'completed' && (
+        <Card padding="lg" className="border-emerald-500/30 shadow-2xl">
+          <div className="py-8 text-center space-y-5 max-w-lg mx-auto">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
+              <CheckCircle2 size={28} />
+            </div>
+
+            <div className="space-y-1">
+              <h2 className="text-2xl font-black text-text-primary tracking-tight">
+                Exam Submitted Successfully
+              </h2>
+              <p className="text-xs text-text-muted leading-relaxed">
+                Your multi-format examination responses and real-time interaction signals have been recorded securely.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl bg-surface-700/40 border border-border text-xs space-y-2 text-left">
+              <div className="flex justify-between py-1 border-b border-border/50">
+                <span className="text-text-muted">Session ID:</span>
+                <span className="font-mono font-bold text-sky-400">{session?.sessionId}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-border/50">
+                <span className="text-text-muted">Student ID:</span>
+                <span className="font-mono font-bold text-text-primary">{session?.studentId}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-border/50">
+                <span className="text-text-muted">Questions Answered:</span>
+                <span className="font-mono font-bold text-text-primary">
+                  {answeredCount} of {questions.length}
+                </span>
+              </div>
+              <div className="flex justify-between py-1">
+                <span className="text-text-muted">Session Status:</span>
+                <span className="font-bold text-emerald-400">Completed & Persisted</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <Link href="/student/dashboard">
+                <Button variant="primary" size="sm" className="text-xs">
+                  Return to Dashboard
+                </Button>
+              </Link>
+              <Link href="/student/history">
+                <Button variant="secondary" size="sm" className="text-xs">
+                  View Session History
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmSubmit && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface-800 border border-border rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 text-xs">
+            <h3 className="text-base font-bold text-text-primary">Submit Validation Examination?</h3>
+            <p className="text-text-secondary leading-relaxed">
+              You have answered <strong>{answeredCount}</strong> of <strong>{questions.length}</strong> questions.
+              {answeredCount < questions.length && (
+                <span className="text-amber-400 block mt-1">
+                  Warning: You have {questions.length - answeredCount} unanswered questions remaining.
+                </span>
+              )}
+            </p>
+            <div className="flex justify-end gap-2.5 pt-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowConfirmSubmit(false)}
+                className="text-xs"
+              >
+                Continue Exam
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setShowConfirmSubmit(false);
+                  handleSubmitExam();
+                }}
+                className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white"
+              >
+                Confirm Submission
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* Progress */}
-      <div className="mb-8 space-y-2">
-        <ProgressBar value={progress} color="indigo" size="sm" />
-        <p className="text-[10px] text-text-muted text-right">{answeredCount} answered</p>
-      </div>
-
-      {/* Question Card */}
-      <div className="flex-1 bg-surface-800 border border-border rounded-xl p-6 sm:p-8 flex flex-col">
-        <div className="mb-8">
-          <span className="inline-block px-2.5 py-1 bg-surface-700 text-text-secondary text-[10px] font-semibold uppercase tracking-wider rounded-md mb-4">
-            {current.topic}
-          </span>
-          <h3 className="text-lg font-medium text-text-primary leading-relaxed">
-            {current.text}
-          </h3>
-        </div>
-
-        <div className="space-y-3 mb-auto">
-          {current.options.map((opt, i) => {
-            const isSelected = answers[current.id] === i;
-            return (
-              <button
-                key={i}
-                onClick={() => handleAnswer(i)}
-                className={`w-full text-left p-4 rounded-xl border transition-all duration-200 flex items-center justify-between group
-                  ${isSelected
-                    ? 'bg-indigo-500/10 border-indigo-500 text-text-primary'
-                    : 'bg-surface-900 border-border text-text-secondary hover:border-text-muted/50 hover:bg-surface-800'
-                  }
-                `}
-              >
-                <span className="text-sm">{opt}</span>
-                <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors
-                  ${isSelected ? 'border-indigo-400' : 'border-text-muted/30 group-hover:border-text-muted'}
-                `}>
-                  {isSelected && <div className="w-2 h-2 rounded-full bg-indigo-400" />}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Navigation */}
-        <div className="flex items-center justify-between pt-8 mt-8 border-t border-border">
-          <Button
-            variant="secondary"
-            onClick={handlePrev}
-            disabled={currentIndex === 0}
-            className="w-28 flex justify-center"
-          >
-            <ChevronLeft size={16} className="mr-1" /> Prev
-          </Button>
-          
-          {isLastQuestion ? (
-            <Button
-              variant="primary"
-              onClick={handleSubmit}
-              className="w-32 flex justify-center bg-indigo-600 hover:bg-indigo-500 text-white"
-            >
-              Submit Exam <Send size={14} className="ml-2" />
-            </Button>
-          ) : (
-            <Button
-              variant="secondary"
-              onClick={handleNext}
-              className="w-28 flex justify-center"
-            >
-              Next <ChevronRight size={16} className="ml-1" />
-            </Button>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

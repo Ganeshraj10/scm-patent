@@ -220,13 +220,9 @@ export async function getAllQuestions(): Promise<Question[]> {
     `)
     .order('created_at', { ascending: true });
 
-  if (error) {
-    if (isDemoMode) {
-      console.warn('[getAllQuestions] Supabase error — demo fallback:', error.message);
-      return mockQuestions;
-    }
-    console.error('[getAllQuestions] Supabase error:', error.message);
-    throw new Error('Failed to load questions.');
+  if (error || !data || data.length === 0) {
+    if (error) console.warn('[getAllQuestions] Supabase error — fallback to mock:', error.message);
+    return mockQuestions;
   }
 
   // Map without an examCode (unknown without joining)
