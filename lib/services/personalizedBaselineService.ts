@@ -14,6 +14,7 @@ import {
   getStudentSessions,
   PatentRecord,
 } from '@/lib/services/datasetService';
+import { getDemoEligibleLowStakesSessions } from '@/lib/services/demoStudentService';
 import {
   PersonalizedBaseline,
   FeatureBaseline,
@@ -189,12 +190,20 @@ export function clearBaselineCache(studentId?: string) {
 
 export function buildStudentBaseline(studentId: string): PersonalizedBaseline {
   // 1. Retrieve EXCLUSIVELY low-stakes records for the particular student
-  const lowStakesRecords = getStudentLowStakesRecords(studentId);
+  let lowStakesRecords = getStudentLowStakesRecords(studentId);
+
+  // Apply demo profile eligible low-stakes session scoping if configured
+  const demoEligibleSessions = getDemoEligibleLowStakesSessions(studentId);
+  if (demoEligibleSessions && demoEligibleSessions.length > 0) {
+    const eligibleSet = new Set(demoEligibleSessions);
+    lowStakesRecords = lowStakesRecords.filter((r) => eligibleSet.has(r.session_id));
+  }
+
   const lowStakesSessions = Array.from(new Set(lowStakesRecords.map((r) => r.session_id)));
   const trainingSessionCount = lowStakesSessions.length;
   const totalInteractions = lowStakesRecords.length;
 
-  // 2. Model Maturity Progression
+  // 2. Model Maturity Progression (Cold Start: 0-2, Developing: 3-5, Established: 6+)
   let maturityStatus: MaturityStatus = 'cold_start';
   let maturityLabel = 'Cold Start (Insufficient History)';
 
@@ -206,7 +215,7 @@ export function buildStudentBaseline(studentId: string): PersonalizedBaseline {
     maturityLabel = `Developing Baseline (${trainingSessionCount} Low-Stakes Sessions)`;
   } else {
     maturityStatus = 'cold_start';
-    maturityLabel = `Cold Start (${trainingSessionCount} Sessions · Needs ≥3 Sessions)`;
+    maturityLabel = `Cold Start (${trainingSessionCount} Session${trainingSessionCount === 1 ? '' : 's'} · Needs ≥3 Sessions)`;
   }
 
   // 3. Overall Feature Baselines

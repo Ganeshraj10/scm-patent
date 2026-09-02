@@ -26,6 +26,8 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 
+import { ModelMaturityIndicator } from '@/components/integrity/ModelMaturityIndicator';
+
 interface PersonalizedBaselineCardProps {
   baseline: PersonalizedBaseline;
   title?: string;
@@ -80,68 +82,75 @@ export function PersonalizedBaselineCard({
   };
 
   return (
-    <Card className="border-indigo-500/30 bg-surface-800/90 shadow-xl space-y-5">
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/70 pb-4">
-        <div>
+    <div className="space-y-4">
+      {/* Visual Model Maturity Stepper */}
+      <ModelMaturityIndicator
+        status={baseline.maturityStatus}
+        sessionCount={baseline.trainingSessionCount}
+      />
+
+      <Card className="border-indigo-500/30 bg-surface-800/90 shadow-xl space-y-5">
+        {/* Header Banner */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/70 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                <Brain size={18} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-text-primary tracking-tight">
+                  {title}
+                </h3>
+                <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>
+              </div>
+            </div>
+          </div>
+
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-              <Brain size={18} />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-text-primary tracking-tight">
-                {title}
-              </h3>
-              <p className="text-xs text-text-muted mt-0.5">{subtitle}</p>
-            </div>
+            {getMaturityBadge()}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {getMaturityBadge()}
-        </div>
-      </div>
-
-      {/* Model Metadata Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-        <div className="p-2.5 rounded-lg bg-surface-700/30 border border-border">
-          <span className="text-text-muted block text-[10px]">Training Sessions:</span>
-          <span className="font-bold text-text-primary font-mono text-sm">
-            {baseline.trainingSessionCount} Low-Stakes
-          </span>
-        </div>
-        <div className="p-2.5 rounded-lg bg-surface-700/30 border border-border">
-          <span className="text-text-muted block text-[10px]">Observations Count:</span>
-          <span className="font-bold text-sky-400 font-mono text-sm">
-            {baseline.totalInteractions} Questions
-          </span>
-        </div>
-        <div className="p-2.5 rounded-lg bg-surface-700/30 border border-border">
-          <span className="text-text-muted block text-[10px]">Student Scope:</span>
-          <span className="font-bold text-indigo-300 font-mono text-sm">
-            {baseline.studentId} (Exclusively)
-          </span>
-        </div>
-        <div className="p-2.5 rounded-lg bg-surface-700/30 border border-border">
-          <span className="text-text-muted block text-[10px]">Last Baseline Sync:</span>
-          <span className="font-bold text-text-muted font-mono text-xs">
-            {baseline.lastUpdated.split(' ')[0]}
-          </span>
-        </div>
-      </div>
-
-      {/* Cold Start Warning if applicable */}
-      {isColdStart && (
-        <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-3 text-xs text-rose-300">
-          <AlertTriangle size={18} className="text-rose-400 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <p className="font-bold text-rose-300">Insufficient Coursework History</p>
-            <p className="text-[11px] text-text-muted leading-relaxed">
-              The system does not yet have enough personal coursework history to establish a reliable behavioral baseline. Baseline generation requires at least 3 practice sessions.
-            </p>
+        {/* Model Metadata Summary */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div className="p-2.5 rounded-lg bg-surface-700/30 border border-border">
+            <span className="text-text-muted block text-[10px]">Training Sessions:</span>
+            <span className="font-bold text-text-primary font-mono text-sm">
+              {baseline.trainingSessionCount} Low-Stakes
+            </span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-surface-700/30 border border-border">
+            <span className="text-text-muted block text-[10px]">Observations Count:</span>
+            <span className="font-bold text-sky-400 font-mono text-sm">
+              {baseline.totalInteractions} Questions
+            </span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-surface-700/30 border border-border">
+            <span className="text-text-muted block text-[10px]">Student Scope:</span>
+            <span className="font-bold text-indigo-300 font-mono text-sm">
+              {baseline.studentId} (Exclusively)
+            </span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-surface-700/30 border border-border">
+            <span className="text-text-muted block text-[10px]">Last Baseline Sync:</span>
+            <span className="font-bold text-text-muted font-mono text-xs">
+              {baseline.lastUpdated.split(' ')[0]}
+            </span>
           </div>
         </div>
-      )}
+
+        {/* Cold Start Notice if applicable */}
+        {isColdStart && (
+          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-3.5 text-xs text-rose-300">
+            <AlertTriangle size={18} className="text-rose-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-bold text-rose-300">Insufficient History</p>
+              <p className="text-[11px] text-text-muted leading-relaxed">
+                The system does not yet have enough personal coursework history to establish a reliable behavioral baseline. (Needs ≥ 3 low-stakes coursework sessions). The system refrains from borrowing population data or generating ungrounded risk conclusions.
+              </p>
+            </div>
+          </div>
+        )}
 
       {/* Device Context Switcher Tabs */}
       <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
@@ -273,5 +282,6 @@ export function PersonalizedBaselineCard({
         </p>
       </div>
     </Card>
+    </div>
   );
 }

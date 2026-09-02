@@ -8,6 +8,10 @@ import { getStudents } from '@/lib/services/students';
 import { formatRelativeTime, formatModelStatus } from '@/lib/formatters';
 import type { Student, ReviewStatus, ModelStatus, DeviceType } from '@/types';
 
+import { DemoStudentSelector } from '@/components/demo/DemoStudentSelector';
+import { Card, CardHeader } from '@/components/ui/Card';
+import { ShieldCheck, Brain, AlertCircle, Info } from 'lucide-react';
+
 const DeviceIcon = ({ type }: { type: DeviceType }) => {
   if (type === 'mobile') return <Smartphone size={14} className="text-text-muted" />;
   if (type === 'tablet') return <Tablet size={14} className="text-text-muted" />;
@@ -63,18 +67,18 @@ export default function StudentsPage() {
   }
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="space-y-6 max-w-7xl">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-text-primary">Students</h2>
+            <h2 className="text-lg font-semibold text-text-primary">Student Behavioral Profiles</h2>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-              Prototype / Synthetic Dataset
+              Prototype / Synthetic Research Data
             </span>
           </div>
-          <p className="text-sm text-text-muted mt-0.5">
-            {students.length} students enrolled · Personalized longitudinal baselines active
+          <p className="text-xs text-text-muted mt-0.5">
+            Demonstrating personalized longitudinal model maturity progression (Cold Start · Developing · Established)
           </p>
         </div>
         <Link
@@ -84,6 +88,24 @@ export default function StudentsPage() {
           Integrity Analysis Workbench
           <ArrowRight size={13} />
         </Link>
+      </div>
+
+      {/* Demo Student Profiles Quick Switcher */}
+      <DemoStudentSelector showNavigationLinks={true} />
+
+      {/* Core Principle Notice */}
+      <div className="p-4 rounded-2xl bg-surface-800 border border-border/80 flex items-start gap-3.5 text-xs">
+        <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 shrink-0 mt-0.5">
+          <Info size={18} />
+        </div>
+        <div className="space-y-1 text-text-secondary leading-relaxed">
+          <span className="font-bold text-text-primary">Personalized Baseline Independence Principle</span>
+          <p className="text-[11px] text-text-muted">
+            Students are evaluated <strong>exclusively against their own prior low-stakes history</strong>.
+            Student A (fast responder, ~30s) and Student B (deliberate responder, ~44s) both exhibit normal behavior for themselves.
+            The system avoids cross-student suspicion rankings and never applies a one-size-fits-all population baseline.
+          </p>
+        </div>
       </div>
 
       {/* Filters */}

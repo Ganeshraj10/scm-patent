@@ -521,6 +521,167 @@ export interface GradedExamSession {
   answersPayload?: Record<string, any>;
 }
 
+// ─── Stage 8: Behavioral Deviation & Risk Analysis Engine ────────────────────
+
+export type RiskLevel = 'low' | 'medium' | 'high' | 'limited_analysis';
+export type ConfidenceLevel = 'high' | 'moderate' | 'low';
+export type DeviationDirection = 'higher' | 'lower' | 'expected' | 'signal_detected';
+
+export interface FeatureDeviation {
+  featureKey: string;
+  displayName: string;
+  observedValue: number;
+  expectedValue: number;
+  difference: number;
+  uncertainty: number;
+  standardizedDeviation: number; // z-score
+  direction: DeviationDirection;
+  contributionWeight: number;
+  contributionPct: number;
+  unit: string;
+  status: 'evaluated' | 'insufficient_data' | 'signal_triggered';
+  explanation: string;
+}
+
+export interface QuestionAnalysis {
+  questionId: string;
+  sessionPosition: number;
+  questionDifficulty: number;
+  questionScore: number; // 0–100
+  isAnomalous: boolean;
+  featureDeviations: Record<string, FeatureDeviation>;
+  primaryContributingFeature?: string;
+  explanation: string;
+}
+
+export interface FeatureContributionSummary {
+  featureKey: string;
+  displayName: string;
+  rawContribution: number;
+  percentage: number;
+  direction: DeviationDirection;
+  unit: string;
+}
+
+export interface BehavioralAnalysisResult {
+  analysisId: string;
+  studentId: string;
+  sessionId: string;
+  examTitle: string;
+  evaluatedAt: string;
+  modelStatus: MaturityStatus;
+  modelMaturityLabel: string;
+  trainingSessionCount: number;
+
+  // Overall scoring (0–100)
+  overallScore: number;
+  riskLevel: RiskLevel;
+  riskStatusLabel: string;
+  confidence: ConfidenceLevel;
+  confidenceLabel: string;
+
+  // Context & Device Signals
+  examDeviceType: string;
+  deviceChangeDetected: boolean;
+  deviceContextNote?: string;
+
+  // Question & Feature breakdowns
+  questionAnalyses: QuestionAnalysis[];
+  featureDeviations: Record<string, FeatureDeviation>;
+  featureContributions: FeatureContributionSummary[];
+
+  // Student-centric explanations
+  summaryExplanation: string;
+  warnings: string[];
+  isEligibleForReport: boolean;
+}
+
+// ─── Stage 9: Explainable Behavioral Risk Report ─────────────────────────────
+
+export type FeatureStatusTag =
+  | 'Within Baseline'
+  | 'Mild Deviation'
+  | 'Significant Deviation'
+  | 'Detected Signal'
+  | 'Insufficient Data';
+
+export interface FeatureReportItem {
+  featureKey: string;
+  displayName: string;
+  expected: number;
+  observed: number;
+  difference: number;
+  uncertainty: number;
+  standardizedDeviation: number; // z-score
+  contributionPct: number;
+  unit: string;
+  status: FeatureStatusTag;
+  direction: DeviationDirection;
+  explanation: string;
+  rangeMin?: number;
+  rangeMax?: number;
+}
+
+export interface QuestionReportItem {
+  questionId: string;
+  sessionPosition: number;
+  difficulty: number;
+  responseTimeObs: number;
+  responseTimeExp: number;
+  revisionCountObs: number;
+  revisionCountExp: number;
+  pointerSpeedObs: number;
+  scrollDistanceObs: number;
+  pasteDetected: number;
+  characterBurstFlag: number;
+  questionScore: number;
+  deviationTier: 'Low' | 'Moderate' | 'High';
+  explanation: string;
+}
+
+export interface BehavioralRiskReport {
+  reportId: string;
+  studentId: string;
+  studentName: string;
+  department: string;
+  sessionId: string;
+  examId: string;
+  examTitle: string;
+  generatedAt: string;
+
+  // Orthogonal Model Maturity
+  modelStatus: MaturityStatus;
+  modelMaturityLabel: string;
+  trainingSessionCount: number;
+
+  // Behavioral Deviation & Risk
+  overallScore: number; // 0–100
+  riskLevel: RiskLevel;
+  riskStatusLabel: string;
+  confidence: ConfidenceLevel;
+  confidenceLabel: string;
+
+  // Executive Narrative & Recommendation
+  executiveSummary: string;
+  recommendedAction: string;
+
+  // Structured breakdowns
+  featureReports: FeatureReportItem[];
+  questionReports: QuestionReportItem[];
+
+  // Hardware Context
+  examDeviceType: string;
+  historicalDevices: string[];
+  deviceChangeDetected: boolean;
+  deviceContextExplanation?: string;
+
+  // Transparency & Audit
+  analysisMethod: string;
+  disclaimer: string;
+  warnings: string[];
+  isEligibleForHumanReview: boolean;
+}
+
 
 
 

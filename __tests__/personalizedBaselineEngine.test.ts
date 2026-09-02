@@ -18,9 +18,9 @@ describe('Stage 5: Personalized Behavioral Baseline Engine', () => {
     expect(baselineS001.studentId).toBe('S001');
     expect(baselineS002.studentId).toBe('S002');
 
-    // Both have 8 low-stakes sessions in prototype dataset
-    expect(baselineS001.trainingSessionCount).toBe(8);
-    expect(baselineS002.trainingSessionCount).toBe(8);
+    // Both have 4 low-stakes sessions in developing demo profile
+    expect(baselineS001.trainingSessionCount).toBe(4);
+    expect(baselineS002.trainingSessionCount).toBe(4);
 
     // Statistical profiles are individual and distinct
     const respTimeS001 = baselineS001.overallFeatures.response_time_sec.expectedValue;
@@ -36,12 +36,12 @@ describe('Stage 5: Personalized Behavioral Baseline Engine', () => {
   test('2. Strictly trains on low-stakes coursework only; excludes graded sessions', () => {
     const baseline = getStudentBaseline('S001');
 
-    // 8 low-stakes sessions used
-    expect(baseline.trainingSessionCount).toBe(8);
-    expect(baseline.totalInteractions).toBe(8);
+    // 4 low-stakes sessions used for S001
+    expect(baseline.trainingSessionCount).toBe(4);
+    expect(baseline.totalInteractions).toBe(4);
 
     // None of the eligible sessions should be graded exams
-    expect(baseline.eligibleLowStakesSessions.length).toBe(8);
+    expect(baseline.eligibleLowStakesSessions.length).toBe(4);
     baseline.eligibleLowStakesSessions.forEach((sId) => {
       expect(sId).toContain('_LS');
       expect(sId).not.toContain('_EX');
@@ -71,7 +71,7 @@ describe('Stage 5: Personalized Behavioral Baseline Engine', () => {
       expect(feat.median).toBeGreaterThanOrEqual(0);
       expect(feat.min).toBeGreaterThanOrEqual(0);
       expect(feat.max).toBeGreaterThanOrEqual(feat.min);
-      expect(feat.sampleCount).toBe(8);
+      expect(feat.sampleCount).toBe(4);
       expect(feat.uncertainty).toBeGreaterThanOrEqual(0);
       expect(isNaN(feat.uncertainty)).toBe(false);
     });
@@ -100,13 +100,13 @@ describe('Stage 5: Personalized Behavioral Baseline Engine', () => {
 
   // ─── 5. Device-Specific Baselines & Fallbacks ───────────────────────────────
   test('5. Maintains device-specific baselines with safe student fallback', () => {
-    const desktopBaseline = getStudentBaselineForDevice('S001', 'web_desktop');
+    const desktopBaseline = getStudentBaselineForDevice('S003', 'web_desktop');
     expect(desktopBaseline).not.toBeNull();
     expect(desktopBaseline!.deviceType).toBe('web_desktop');
 
     // Devices with sufficient data use device-specific baseline
     // Devices with insufficient data fall back to student's overall baseline
-    const mobileBaseline = getStudentBaselineForDevice('S001', 'mobile');
+    const mobileBaseline = getStudentBaselineForDevice('S003', 'mobile');
     expect(mobileBaseline).not.toBeNull();
     expect(['difficulty_adjusted', 'student_mean_fallback', 'student_overall_fallback']).toContain(
       mobileBaseline!.features.response_time_sec.method
@@ -134,11 +134,16 @@ describe('Stage 5: Personalized Behavioral Baseline Engine', () => {
   });
 
   // ─── 7. Model Maturity Progression ──────────────────────────────────────────
-  test('7. Classifies model maturity: Established for S001 (8 sessions)', () => {
-    const maturity = getModelMaturity('S001');
-    expect(maturity.status).toBe('established');
-    expect(maturity.sessionCount).toBe(8);
-    expect(maturity.label).toContain('Established');
+  test('7. Classifies model maturity: Established for S003 (8 sessions), Developing for S001 (4 sessions)', () => {
+    const maturityS003 = getModelMaturity('S003');
+    expect(maturityS003.status).toBe('established');
+    expect(maturityS003.sessionCount).toBe(8);
+    expect(maturityS003.label).toContain('Established');
+
+    const maturityS001 = getModelMaturity('S001');
+    expect(maturityS001.status).toBe('developing');
+    expect(maturityS001.sessionCount).toBe(4);
+    expect(maturityS001.label).toContain('Developing');
   });
 
   // ─── 8. Cold Start for Unseeded or New Students ─────────────────────────────

@@ -2,16 +2,16 @@
 
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ExamAnalysis } from '@/components/integrity/ExamAnalysis';
+import { BehavioralAnalysisWorkbench } from '@/components/integrity/BehavioralAnalysisWorkbench';
 
 function AnalysisContent() {
   const searchParams = useSearchParams();
-  const studentId = searchParams.get('student') || 'S001';
+  const studentId = searchParams.get('student') || 'S003';
   const sessionId = searchParams.get('session') || undefined;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <ExamAnalysis initialStudentId={studentId} initialSessionId={sessionId} />
+      <BehavioralAnalysisWorkbench initialStudentId={studentId} initialSessionId={sessionId} />
     </div>
   );
 }

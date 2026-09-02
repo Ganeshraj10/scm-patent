@@ -14,6 +14,7 @@ import {
   X,
   ChevronRight,
   Activity,
+  FileText,
 } from 'lucide-react';
 
 interface NavItem {
@@ -33,6 +34,11 @@ const navItems: NavItem[] = [
     label: 'Integrity Analysis',
     href: '/instructor/analysis',
     icon: <Activity size={18} />,
+  },
+  {
+    label: 'Risk Reports',
+    href: '/instructor/reports',
+    icon: <FileText size={18} />,
   },
   {
     label: 'Students',

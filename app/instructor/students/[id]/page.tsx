@@ -27,6 +27,8 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { mockStudents } from '@/data/mockStudents';
 import { mockDeviationHistory } from '@/data/mockFeatures';
+import { getDemoStudentProfile, isDemoStudent } from '@/lib/services/demoStudentService';
+import { DemoStudentSelector } from '@/components/demo/DemoStudentSelector';
 import { getSessionsByStudentId } from '@/data/mockSessions';
 import { getAlertsByStudent } from '@/data/mockAlerts';
 import { formatDate, formatModelStatus, formatRelativeTime, formatConfidence } from '@/lib/formatters';
@@ -35,16 +37,18 @@ import type { ReviewStatus, ModelStatus } from '@/types';
 export default function StudentProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
 
+  const demoProfile = getDemoStudentProfile(id);
+
   // Match by id or student identifier (e.g. S001, U2021034)
   const student = mockStudents.find((s) => s.id === id || s.studentId === id) || {
     id: id,
     studentId: id.startsWith('S0') ? id : 'S001',
-    name: id.startsWith('S0') ? `Student ${id}` : 'Alex Chen',
+    name: demoProfile ? demoProfile.name : (id.startsWith('S0') ? `Student ${id}` : 'Alex Chen'),
     department: 'Computer Science',
     enrollmentYear: 2023,
     modelStatus: 'active' as const,
     modelConfidence: 94,
-    sessionCount: 8,
+    sessionCount: demoProfile ? demoProfile.lowStakesSessionCount : 8,
     averageDeviation: 1.2,
     reviewStatus: 'clear' as const,
     deviceType: 'web_desktop',
@@ -79,6 +83,9 @@ export default function StudentProfilePage({ params }: { params: Promise<{ id: s
           </p>
         </div>
       </div>
+
+      {/* Demo Student Profile Switcher */}
+      <DemoStudentSelector selectedStudentId={studentDatasetId} showNavigationLinks={true} />
 
       {/* Instructor Inspection Banner */}
       <div className="p-4 rounded-2xl bg-surface-800 border border-indigo-500/30 flex items-start gap-3.5 shadow-lg">
