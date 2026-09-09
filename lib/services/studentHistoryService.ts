@@ -20,6 +20,7 @@ import {
   getAllGradedExamSessions,
   getGradedExamSession,
 } from '@/lib/services/examSessionService';
+import { fetchStudentSessionsFromSupabase } from '@/lib/services/supabaseSessionService';
 import { DatasetSession, QuestionInteraction } from '@/types';
 
 export interface StudentCourseworkSummary {
@@ -201,6 +202,105 @@ export function getStudentCourseworkSessions(
       });
     }
   });
+
+  // Type filter
+  if (options?.sessionType && options.sessionType !== 'all') {
+    sessions = sessions.filter((s) => s.sessionType === options.sessionType);
+  }
+
+  // Device filter
+  if (options?.deviceType && options.deviceType !== 'all') {
+    sessions = sessions.filter((s) => s.deviceType === options.deviceType);
+  }
+
+  // Search
+  if (options?.search && options.search.trim() !== '') {
+    const q = options.search.toLowerCase().trim();
+    sessions = sessions.filter(
+      (s) =>
+        s.sessionId.toLowerCase().includes(q) ||
+        s.deviceType.toLowerCase().includes(q) ||
+        s.timestamp.includes(q) ||
+        ((s as any).date && (s as any).date.includes(q))
+    );
+  }
+
+  // Sorting
+  const sortOrder = options?.sortOrder || 'newest_first';
+  sessions.sort((a, b) => {
+    const timeA = new Date(a.timestamp || (a as any).date).getTime();
+    const timeB = new Date(b.timestamp || (b as any).date).getTime();
+    return sortOrder === 'newest_first' ? timeB - timeA : timeA - timeB;
+  });
+
+  return sessions;
+}
+
+export async function getStudentCourseworkSessionsAsync(
+  studentId: string,
+  options?: StudentSessionFilterOptions
+): Promise<DatasetSession[]> {
+  // Start with local/prototype dataset sessions
+  let sessions = [...getStudentSessions(studentId)];
+
+  // Merge live taken graded exams from in-memory / local storage
+  const liveGraded = getAllGradedExamSessions(studentId);
+  const seenSessionIds = new Set(sessions.map((s) => s.sessionId));
+
+  liveGraded.forEach((lg) => {
+    if (!seenSessionIds.has(lg.sessionId) && lg.studentId === studentId) {
+      seenSessionIds.add(lg.sessionId);
+      sessions.push({
+        sessionId: lg.sessionId,
+        studentId: lg.studentId,
+        sessionType: 'graded',
+        timestamp: lg.completedAt || lg.startedAt,
+        deviceType: lg.deviceType,
+        questionCount: lg.questionCount,
+        avgResponseTimeSec: lg.avgResponseTimeSec || 0,
+        avgRevisionCount: lg.avgRevisionCount || 0,
+        avgPointerSpeed: 0,
+        totalScrollDistance: 0,
+        hasPasteEvent: lg.hasPasteEvent || false,
+        hasBurstEvent: lg.hasBurstEvent || false,
+        humanReviewLabel: 'clean_mock',
+        interactions: lg.interactions.map((q) => ({
+          questionId: q.questionId,
+          recordId: q.recordId,
+          difficulty: q.questionDifficulty,
+          responseTimeSec: q.responseTimeSec,
+          revisionCount: q.answerRevisionCount,
+          revisionTimeSec: q.answerRevisionTimeSec,
+          correctness: q.isAnswerCorrect ? 1 : 0,
+          pointerDistancePx: q.pointerDistancePx,
+          pointerAvgSpeedPxS: q.pointerAvgSpeedPxS,
+          scrollDistancePx: q.scrollDistancePx,
+          scrollEvents: q.scrollEvents,
+          pasteDetected: q.pasteDetected === 1,
+          characterBurstFlag: q.characterBurstFlag === 1,
+          deviceType: q.deviceType,
+          sessionPosition: q.sessionPosition,
+          timeOfDay: q.timeOfDay,
+          timestamp: q.timestamp,
+          sourceDataset: 'live_examination',
+          humanReviewLabel: 'clean_mock',
+        })),
+      });
+    }
+  });
+
+  // Fetch persistent sessions from Supabase backend across all devices
+  try {
+    const supabaseSessions = await fetchStudentSessionsFromSupabase(studentId);
+    supabaseSessions.forEach((ss) => {
+      if (!seenSessionIds.has(ss.sessionId)) {
+        seenSessionIds.add(ss.sessionId);
+        sessions.push(ss);
+      }
+    });
+  } catch (e) {
+    console.warn('[studentHistoryService] Supabase session fetch notice:', e);
+  }
 
   // Type filter
   if (options?.sessionType && options.sessionType !== 'all') {

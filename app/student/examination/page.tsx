@@ -16,6 +16,7 @@ import {
   saveQuestionTelemetry,
   completeGradedExamSession,
 } from '@/lib/services/examSessionService';
+import { getCurrentProfileClient } from '@/lib/services/auth';
 import {
   QuestionTelemetryState,
   createInitialTelemetryState,
@@ -63,6 +64,17 @@ export default function ExaminationPage() {
   const [studentId, setStudentId] = useState<string>('S001');
   const [questions, setQuestions] = useState<Question[]>(validationExamQuestions);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
+
+  // Resolve active student from Supabase Auth on mount
+  useEffect(() => {
+    getCurrentProfileClient().then((profile) => {
+      if (profile?.student_identifier) {
+        setStudentId(profile.student_identifier);
+      } else if (profile?.student_id) {
+        setStudentId(profile.student_id);
+      }
+    });
+  }, []);
   
   // Student answer state
   const [answers, setAnswers] = useState<Record<number, any>>({});

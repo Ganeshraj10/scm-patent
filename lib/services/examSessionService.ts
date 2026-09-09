@@ -8,6 +8,7 @@
 import { GradedExamSession, ExamQuestionTelemetry } from '@/types';
 import { getAllPatentRecords, getGradedSessions } from '@/lib/services/datasetService';
 import { detectDeviceType } from '@/lib/services/examFeatureExtractor';
+import { persistExamSessionToSupabase } from '@/lib/services/supabaseSessionService';
 
 const inMemoryExamSessions = new Map<string, GradedExamSession>();
 
@@ -119,6 +120,20 @@ export function completeGradedExamSession(sessionId: string): GradedExamSession 
 
   inMemoryExamSessions.set(sessionId, session);
   saveSessionToStorage(session);
+
+  // Asynchronously persist to Supabase backend
+  persistExamSessionToSupabase(session).catch((err) => {
+    console.warn('[ExamSessionService] Async Supabase persist notice:', err);
+  });
+
+  return session;
+}
+
+export async function completeGradedExamSessionAsync(sessionId: string): Promise<GradedExamSession | null> {
+  const session = completeGradedExamSession(sessionId);
+  if (session) {
+    await persistExamSessionToSupabase(session);
+  }
   return session;
 }
 

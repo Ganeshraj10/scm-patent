@@ -1,14 +1,18 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import {
   getStudentCourseworkSessions,
+  getStudentCourseworkSessionsAsync,
   getStudentCourseworkSummary,
 } from '@/lib/services/studentHistoryService';
+import { getCurrentProfileClient } from '@/lib/services/auth';
+import { subscribeToStudentSessions } from '@/lib/services/supabaseSessionService';
 import { StudentSessionDetailModal } from '@/components/integrity/StudentSessionDetailModal';
+import { DatasetSession } from '@/types';
 import {
   BarChart3,
   Search,
@@ -25,6 +29,7 @@ import {
   Laptop,
   Smartphone,
   Calendar,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function StudentHistoryPage() {
@@ -34,15 +39,51 @@ export default function StudentHistoryPage() {
   const [deviceType, setDeviceType] = useState<string>('all');
   const [search, setSearch] = useState<string>('');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<DatasetSession[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const sessions = useMemo(() => {
-    return getStudentCourseworkSessions(studentId, {
-      sortOrder,
-      sessionType,
-      deviceType,
-      search,
+  // 1. Resolve active authenticated user on mount
+  useEffect(() => {
+    getCurrentProfileClient().then((profile) => {
+      if (profile?.student_identifier) {
+        setStudentId(profile.student_identifier);
+      } else if (profile?.student_id) {
+        setStudentId(profile.student_id);
+      }
     });
+  }, []);
+
+  // 2. Fetch sessions asynchronously from Supabase & local dataset
+  const loadSessions = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await getStudentCourseworkSessionsAsync(studentId, {
+        sortOrder,
+        sessionType,
+        deviceType,
+        search,
+      });
+      setSessions(res);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load session history from Supabase');
+    } finally {
+      setLoading(false);
+    }
   }, [studentId, sortOrder, sessionType, deviceType, search]);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
+
+  // 3. Supabase Realtime synchronization across open devices
+  useEffect(() => {
+    const unsubscribe = subscribeToStudentSessions(studentId, () => {
+      loadSessions();
+    });
+    return () => unsubscribe();
+  }, [studentId, loadSessions]);
 
   const summary = useMemo(() => getStudentCourseworkSummary(studentId), [studentId]);
 
@@ -176,7 +217,24 @@ export default function StudentHistoryPage() {
 
       {/* History Session Cards Grid */}
       <div className="space-y-3">
-        {sessions.map((s) => {
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-7 h-7 border-2 border-sky-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="p-6 text-center text-xs space-y-2">
+            <p className="text-rose-400 font-medium">{error}</p>
+            <Button variant="secondary" size="sm" onClick={loadSessions} className="text-xs">
+              <RefreshCw size={12} className="mr-1" />
+              Retry Fetching from Supabase
+            </Button>
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="p-8 text-center text-text-muted text-xs">
+            No session records found matching the selected filters for student {studentId}.
+          </div>
+        ) : (
+          sessions.map((s) => {
           const isLowStakes = s.sessionType === 'low_stakes';
           return (
             <Card key={s.sessionId} padding="sm" className="hover:border-sky-500/30 transition-all">
@@ -239,7 +297,8 @@ export default function StudentHistoryPage() {
               </div>
             </Card>
           );
-        })}
+        })
+      )}
       </div>
 
       {/* Question Detail Modal */}

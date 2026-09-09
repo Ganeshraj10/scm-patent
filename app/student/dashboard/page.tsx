@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -13,6 +13,7 @@ import {
   getStudentTimeOfDayHistory,
   getStudentTimeline,
 } from '@/lib/services/studentHistoryService';
+import { getCurrentProfileClient } from '@/lib/services/auth';
 import { getModelMaturity } from '@/lib/services/personalizedBaselineService';
 import { StudentBehaviorCharts } from '@/components/integrity/StudentBehaviorCharts';
 import { StudentTimeline } from '@/components/integrity/StudentTimeline';
@@ -38,9 +39,19 @@ import {
 } from 'lucide-react';
 
 export default function StudentDashboardPage() {
-  // Allow toggling between prototype cohort students (S001, S002, S003) for easy testing of isolation
   const [activeStudentId, setActiveStudentId] = useState<string>('S001');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+
+  // Resolve active student from Supabase Auth on mount
+  useEffect(() => {
+    getCurrentProfileClient().then((profile) => {
+      if (profile?.student_identifier) {
+        setActiveStudentId(profile.student_identifier);
+      } else if (profile?.student_id) {
+        setActiveStudentId(profile.student_id);
+      }
+    });
+  }, []);
 
   // Student student profile lookup
   const studentNames: Record<string, string> = {
