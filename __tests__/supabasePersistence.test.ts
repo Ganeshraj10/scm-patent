@@ -1,6 +1,7 @@
 import { createClient as createBrowserClient } from '../lib/supabase/client';
 import {
   persistExamSessionToSupabase,
+  persistCourseworkSessionToSupabase,
   fetchStudentSessionsFromSupabase,
   subscribeToStudentSessions,
 } from '../lib/services/supabaseSessionService';
@@ -15,7 +16,7 @@ import {
   getStudentCourseworkSessionsAsync,
 } from '../lib/services/studentHistoryService';
 import { getCurrentProfile, getCurrentRole } from '../lib/services/auth';
-import { GradedExamSession } from '../types';
+import { GradedExamSession, DatasetSession } from '../types';
 
 describe('Supabase Persistence, Authentication & Cross-Device Sync', () => {
   // ─── 1. Client Initialization ─────────────────────────────────────────────
@@ -86,8 +87,53 @@ describe('Supabase Persistence, Authentication & Cross-Device Sync', () => {
     expect(found!.studentId).toBe('S003');
   });
 
-  // ─── 4. Realtime Channel Lifecycle ────────────────────────────────────────
-  test('4. Realtime subscription channel creates and unsubscribes cleanly without leaks', () => {
+  // ─── 4. Coursework Session Persistence ────────────────────────────────────
+  test('4. Coursework low-stakes session persists to Supabase format', async () => {
+    const mockCoursework: DatasetSession = {
+      sessionId: 'CW_TEST_001',
+      studentId: 'S001',
+      sessionType: 'low_stakes',
+      timestamp: new Date().toISOString(),
+      deviceType: 'web_desktop',
+      questionCount: 2,
+      avgResponseTimeSec: 28.5,
+      avgRevisionCount: 1.0,
+      avgPointerSpeed: 230,
+      totalScrollDistance: 450,
+      hasPasteEvent: false,
+      hasBurstEvent: false,
+      humanReviewLabel: 'clean_mock',
+      interactions: [
+        {
+          recordId: 'rec_cw_1',
+          questionId: 'q_cw_1',
+          timestamp: new Date().toISOString(),
+          timeOfDay: '10:00',
+          difficulty: 0.5,
+          responseTimeSec: 28.5,
+          revisionCount: 1,
+          revisionTimeSec: 3.0,
+          correctness: 1,
+          pointerDistancePx: 450,
+          pointerAvgSpeedPxS: 230,
+          scrollDistancePx: 300,
+          scrollEvents: 3,
+          pasteDetected: false,
+          characterBurstFlag: false,
+          deviceType: 'web_desktop',
+          sessionPosition: 1,
+          sourceDataset: 'prototype',
+          humanReviewLabel: 'clean_mock',
+        },
+      ],
+    };
+
+    const res = await persistCourseworkSessionToSupabase(mockCoursework);
+    expect(res).toHaveProperty('success', true);
+  });
+
+  // ─── 5. Realtime Channel Lifecycle ────────────────────────────────────────
+  test('5. Realtime subscription channel creates and unsubscribes cleanly without leaks', () => {
     const onUpdate = jest.fn();
     const unsubscribe = subscribeToStudentSessions('S003', onUpdate);
     expect(typeof unsubscribe).toBe('function');
@@ -95,8 +141,8 @@ describe('Supabase Persistence, Authentication & Cross-Device Sync', () => {
     expect(() => unsubscribe()).not.toThrow();
   });
 
-  // ─── 5. Persistence Service Error Handling ────────────────────────────────
-  test('5. Persist service handles network/database errors gracefully without throwing', async () => {
+  // ─── 6. Persistence Service Error Handling ────────────────────────────────
+  test('6. Persist service handles network/database errors gracefully without throwing', async () => {
     const mockSession: GradedExamSession = {
       sessionId: 'TEST_PERSIST_SESSION',
       studentId: 'S001',
@@ -116,3 +162,4 @@ describe('Supabase Persistence, Authentication & Cross-Device Sync', () => {
     expect(res).toHaveProperty('success');
   });
 });
+
