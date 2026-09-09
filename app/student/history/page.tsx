@@ -39,8 +39,10 @@ export default function StudentHistoryPage() {
   const [deviceType, setDeviceType] = useState<string>('all');
   const [search, setSearch] = useState<string>('');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<DatasetSession[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [sessions, setSessions] = useState<DatasetSession[]>(() =>
+    getStudentCourseworkSessions('S001', { sortOrder: 'newest_first' })
+  );
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // 1. Resolve active authenticated user on mount
@@ -57,8 +59,18 @@ export default function StudentHistoryPage() {
   // 2. Fetch sessions asynchronously from Supabase & local dataset
   const loadSessions = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
+      // Immediately populate sync sessions to avoid any visual lag
+      const syncRes = getStudentCourseworkSessions(studentId, {
+        sortOrder,
+        sessionType,
+        deviceType,
+        search,
+      });
+      if (syncRes.length > 0) {
+        setSessions(syncRes);
+      }
+
       const res = await getStudentCourseworkSessionsAsync(studentId, {
         sortOrder,
         sessionType,
@@ -85,7 +97,34 @@ export default function StudentHistoryPage() {
     return () => unsubscribe();
   }, [studentId, loadSessions]);
 
-  const summary = useMemo(() => getStudentCourseworkSummary(studentId), [studentId]);
+  const summary = useMemo(() => {
+    if (sessions && sessions.length > 0) {
+      const lowStakes = sessions.filter((s) => s.sessionType === 'low_stakes');
+      const graded = sessions.filter((s) => s.sessionType === 'graded');
+      const totalQuestions = sessions.reduce((sum, s) => sum + (s.questionCount || (s.interactions ? s.interactions.length : 0)), 0);
+      const totalTime = sessions.reduce((sum, s) => sum + (s.avgResponseTimeSec || 25) * (s.questionCount || 1), 0);
+      const totalRevs = sessions.reduce((sum, s) => sum + (s.avgRevisionCount || 0.5) * (s.questionCount || 1), 0);
+      const sortedByDate = [...sessions].sort(
+        (a, b) => new Date(b.timestamp || (b as any).date).getTime() - new Date(a.timestamp || (a as any).date).getTime()
+      );
+
+      return {
+        studentId,
+        totalSessions: sessions.length,
+        lowStakesSessionsCount: lowStakes.length,
+        gradedSessionsCount: graded.length,
+        totalQuestionsAnswered: totalQuestions,
+        avgResponseTimeSec: totalQuestions > 0 ? Number((totalTime / totalQuestions).toFixed(1)) : 25.0,
+        avgAnswerRevisions: totalQuestions > 0 ? Number((totalRevs / totalQuestions).toFixed(2)) : 0.5,
+        avgPointerSpeedPxS: 240,
+        avgScrollDistancePx: 500,
+        firstActivityDate: sortedByDate[sortedByDate.length - 1]?.timestamp || new Date().toISOString(),
+        latestActivityDate: sortedByDate[0]?.timestamp || new Date().toISOString(),
+        devicesUsed: Array.from(new Set(sessions.map((s) => s.deviceType))),
+      };
+    }
+    return getStudentCourseworkSummary(studentId);
+  }, [studentId, sessions]);
 
   const getDeviceIcon = (dev: string) => {
     switch (dev) {

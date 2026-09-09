@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -8,18 +8,21 @@ import { Button } from '@/components/ui/Button';
 import {
   getStudentCourseworkSummary,
   getStudentCourseworkSessions,
+  getStudentCourseworkSessionsAsync,
   getStudentBehaviorTrends,
   getStudentDeviceHistory,
   getStudentTimeOfDayHistory,
   getStudentTimeline,
 } from '@/lib/services/studentHistoryService';
 import { getCurrentProfileClient } from '@/lib/services/auth';
+import { subscribeToStudentSessions } from '@/lib/services/supabaseSessionService';
 import { getModelMaturity } from '@/lib/services/personalizedBaselineService';
 import { StudentBehaviorCharts } from '@/components/integrity/StudentBehaviorCharts';
 import { StudentTimeline } from '@/components/integrity/StudentTimeline';
 import { StudentDeviceHistory } from '@/components/integrity/StudentDeviceHistory';
 import { StudentTimeOfDay } from '@/components/integrity/StudentTimeOfDay';
 import { StudentSessionDetailModal } from '@/components/integrity/StudentSessionDetailModal';
+import { DatasetSession } from '@/types';
 import {
   BookOpen,
   ClipboardList,
@@ -41,6 +44,9 @@ import {
 export default function StudentDashboardPage() {
   const [activeStudentId, setActiveStudentId] = useState<string>('S001');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<DatasetSession[]>(() =>
+    getStudentCourseworkSessions('S001', { sortOrder: 'newest_first' })
+  );
 
   // Resolve active student from Supabase Auth on mount
   useEffect(() => {
@@ -53,7 +59,36 @@ export default function StudentDashboardPage() {
     });
   }, []);
 
-  // Student student profile lookup
+  // Fetch longitudinal sessions asynchronously from Supabase & local storage
+  const loadDashboardSessions = useCallback(async () => {
+    try {
+      const syncRes = getStudentCourseworkSessions(activeStudentId, { sortOrder: 'newest_first' });
+      if (syncRes.length > 0) {
+        setSessions(syncRes);
+      }
+
+      const res = await getStudentCourseworkSessionsAsync(activeStudentId, { sortOrder: 'newest_first' });
+      if (res && res.length > 0) {
+        setSessions(res);
+      }
+    } catch (e) {
+      // Graceful fallback to sync sessions
+    }
+  }, [activeStudentId]);
+
+  useEffect(() => {
+    loadDashboardSessions();
+  }, [loadDashboardSessions]);
+
+  // Realtime subscription for cross-device updates
+  useEffect(() => {
+    const unsubscribe = subscribeToStudentSessions(activeStudentId, () => {
+      loadDashboardSessions();
+    });
+    return () => unsubscribe();
+  }, [activeStudentId, loadDashboardSessions]);
+
+  // Student profile lookup
   const studentNames: Record<string, string> = {
     S001: 'Alex Chen',
     S002: 'Bhavna Patel',
@@ -65,16 +100,13 @@ export default function StudentDashboardPage() {
   const studentName = studentNames[activeStudentId] || `Student (${activeStudentId})`;
 
   // Fetch longitudinal data strictly scoped to activeStudentId
-  const summary = useMemo(() => getStudentCourseworkSummary(activeStudentId), [activeStudentId]);
+  const summary = useMemo(() => getStudentCourseworkSummary(activeStudentId), [activeStudentId, sessions]);
   const maturity = useMemo(() => getModelMaturity(activeStudentId), [activeStudentId]);
-  const recentSessions = useMemo(
-    () => getStudentCourseworkSessions(activeStudentId, { sortOrder: 'newest_first' }).slice(0, 5),
-    [activeStudentId]
-  );
-  const trends = useMemo(() => getStudentBehaviorTrends(activeStudentId), [activeStudentId]);
-  const devices = useMemo(() => getStudentDeviceHistory(activeStudentId), [activeStudentId]);
-  const timeOfDayStats = useMemo(() => getStudentTimeOfDayHistory(activeStudentId), [activeStudentId]);
-  const timeline = useMemo(() => getStudentTimeline(activeStudentId).slice(0, 4), [activeStudentId]);
+  const recentSessions = useMemo(() => sessions.slice(0, 5), [sessions]);
+  const trends = useMemo(() => getStudentBehaviorTrends(activeStudentId), [activeStudentId, sessions]);
+  const devices = useMemo(() => getStudentDeviceHistory(activeStudentId), [activeStudentId, sessions]);
+  const timeOfDayStats = useMemo(() => getStudentTimeOfDayHistory(activeStudentId), [activeStudentId, sessions]);
+  const timeline = useMemo(() => getStudentTimeline(activeStudentId).slice(0, 4), [activeStudentId, sessions]);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">

@@ -15,6 +15,7 @@ import {
   createGradedExamSession,
   saveQuestionTelemetry,
   completeGradedExamSession,
+  completeGradedExamSessionAsync,
 } from '@/lib/services/examSessionService';
 import { getCurrentProfileClient } from '@/lib/services/auth';
 import {
@@ -47,6 +48,7 @@ import {
   CheckSquare,
   FileText,
   HelpCircle,
+  RefreshCw,
 } from 'lucide-react';
 
 type ExamPhase = 'intro' | 'active' | 'completed';
@@ -81,6 +83,8 @@ export default function ExaminationPage() {
   const [timeLeft, setTimeLeft] = useState<number>(EXAM_DURATION_SECONDS);
   const [session, setSession] = useState<GradedExamSession | null>(null);
   const [showConfirmSubmit, setShowConfirmSubmit] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   // Active question telemetry state ref
   const telemetryMap = useRef<Record<number, QuestionTelemetryState>>({});
@@ -320,12 +324,24 @@ export default function ExaminationPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSubmitExam = () => {
-    flushCurrentQuestionTelemetry();
-    if (session) {
-      completeGradedExamSession(session.sessionId);
+  const handleSubmitExam = async () => {
+    if (!session || isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmissionError(null);
+
+    try {
+      flushCurrentQuestionTelemetry();
+      const updated = await completeGradedExamSessionAsync(session.sessionId);
+      if (updated) {
+        setSession({ ...updated });
+      }
+      setPhase('completed');
+    } catch (err: any) {
+      console.error('[ExaminationPage] Exam submission persistence failed:', err);
+      setSubmissionError(err?.message || 'Database persistence failed. Please try submitting again.');
+    } finally {
+      setIsSubmitting(false);
     }
-    setPhase('completed');
   };
 
   const answeredCount = Object.keys(answers).length;
@@ -598,13 +614,40 @@ export default function ExaminationPage() {
               />
             )}
 
+            {/* Submission Error Banner */}
+            {submissionError && (
+              <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start gap-3 text-xs">
+                <AlertTriangle size={16} className="text-rose-400 shrink-0 mt-0.5" />
+                <div className="flex-1 space-y-1">
+                  <p className="font-bold text-rose-300">Persistence Error — Submission Not Saved</p>
+                  <p className="text-rose-200/80 leading-relaxed">{submissionError}</p>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSubmitExam}
+                  disabled={isSubmitting}
+                  className="bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-bold shrink-0"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw size={12} className="animate-spin mr-1" />
+                      Retrying...
+                    </>
+                  ) : (
+                    'Retry Submission'
+                  )}
+                </Button>
+              </div>
+            )}
+
             {/* Navigation Buttons Footer */}
             <div className="flex items-center justify-between pt-4 border-t border-border">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => handleGoToQuestion(currentIndex - 1)}
-                disabled={currentIndex === 0}
+                disabled={currentIndex === 0 || isSubmitting}
                 className="text-xs"
               >
                 <ChevronLeft size={14} className="mr-1" />
@@ -616,6 +659,7 @@ export default function ExaminationPage() {
                   variant="primary"
                   size="sm"
                   onClick={() => handleGoToQuestion(currentIndex + 1)}
+                  disabled={isSubmitting}
                   className="text-xs font-bold"
                 >
                   Next Question
@@ -626,10 +670,20 @@ export default function ExaminationPage() {
                   variant="primary"
                   size="sm"
                   onClick={() => setShowConfirmSubmit(true)}
+                  disabled={isSubmitting}
                   className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-900/30 font-bold"
                 >
-                  Finish & Submit Exam
-                  <CheckCircle2 size={14} className="ml-1.5" />
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin mr-1.5" />
+                      Saving to Database...
+                    </>
+                  ) : (
+                    <>
+                      Finish & Submit Exam
+                      <CheckCircle2 size={14} className="ml-1.5" />
+                    </>
+                  )}
                 </Button>
               )}
             </div>
@@ -709,6 +763,7 @@ export default function ExaminationPage() {
                 variant="secondary"
                 size="sm"
                 onClick={() => setShowConfirmSubmit(false)}
+                disabled={isSubmitting}
                 className="text-xs"
               >
                 Continue Exam
@@ -716,13 +771,14 @@ export default function ExaminationPage() {
               <Button
                 variant="primary"
                 size="sm"
-                onClick={() => {
+                disabled={isSubmitting}
+                onClick={async () => {
                   setShowConfirmSubmit(false);
-                  handleSubmitExam();
+                  await handleSubmitExam();
                 }}
                 className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white"
               >
-                Confirm Submission
+                {isSubmitting ? 'Persisting to Database...' : 'Confirm Submission'}
               </Button>
             </div>
           </div>

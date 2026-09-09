@@ -6,9 +6,20 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
+  const url = (
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    'https://qkuwbsewryvbdoiyhrfd.supabase.co'
+  ).trim();
+
+  const key = (
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    'sb_publishable_fq5yUjqffI_D-sYfQBOOcw_WS6Xervu'
+  ).trim();
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    url,
+    key,
     {
       cookies: {
         getAll() {

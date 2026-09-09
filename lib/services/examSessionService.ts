@@ -8,7 +8,7 @@
 import { GradedExamSession, ExamQuestionTelemetry } from '@/types';
 import { getAllPatentRecords, getGradedSessions } from '@/lib/services/datasetService';
 import { detectDeviceType } from '@/lib/services/examFeatureExtractor';
-import { persistExamSessionToSupabase } from '@/lib/services/supabaseSessionService';
+import { persistExamSessionToSupabase, getCachedSupabaseExamSession } from '@/lib/services/supabaseSessionService';
 
 const inMemoryExamSessions = new Map<string, GradedExamSession>();
 
@@ -121,10 +121,12 @@ export function completeGradedExamSession(sessionId: string): GradedExamSession 
   inMemoryExamSessions.set(sessionId, session);
   saveSessionToStorage(session);
 
-  // Asynchronously persist to Supabase backend
-  persistExamSessionToSupabase(session).catch((err) => {
-    console.warn('[ExamSessionService] Async Supabase persist notice:', err);
-  });
+  // In browser runtime, trigger background persistence if called synchronously
+  if (typeof window !== 'undefined') {
+    persistExamSessionToSupabase(session).catch((err) => {
+      console.warn('[ExamSessionService] Async Supabase persist notice:', err);
+    });
+  }
 
   return session;
 }
@@ -132,7 +134,10 @@ export function completeGradedExamSession(sessionId: string): GradedExamSession 
 export async function completeGradedExamSessionAsync(sessionId: string): Promise<GradedExamSession | null> {
   const session = completeGradedExamSession(sessionId);
   if (session) {
-    await persistExamSessionToSupabase(session);
+    const res = await persistExamSessionToSupabase(session);
+    if (!res.success) {
+      throw new Error(res.error || 'Failed to persist exam attempt to Supabase database');
+    }
   }
   return session;
 }
@@ -143,14 +148,21 @@ export function getGradedExamSession(sessionId: string): GradedExamSession | nul
     return inMemoryExamSessions.get(sessionId)!;
   }
 
-  // 2. Check local storage
+  // 2. Check cached Supabase sessions
+  const cached = getCachedSupabaseExamSession(sessionId);
+  if (cached) {
+    inMemoryExamSessions.set(sessionId, cached);
+    return cached;
+  }
+
+  // 3. Check local storage
   const fromStorage = loadSessionFromStorage(sessionId);
   if (fromStorage) {
     inMemoryExamSessions.set(sessionId, fromStorage);
     return fromStorage;
   }
 
-  // 3. Fallback: Check prototype dataset graded sessions
+  // 4. Fallback: Check prototype dataset graded sessions
   const allRecords = getAllPatentRecords();
   const datasetRecords = allRecords.filter((r) => r.session_id === sessionId && r.session_type === 'graded');
 
