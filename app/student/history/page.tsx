@@ -13,6 +13,7 @@ import { getCurrentProfileClient } from '@/lib/services/auth';
 import { subscribeToStudentSessions } from '@/lib/services/supabaseSessionService';
 import { StudentSessionDetailModal } from '@/components/integrity/StudentSessionDetailModal';
 import { DatasetSession } from '@/types';
+import { formatExamDate } from '@/lib/formatters';
 import {
   BarChart3,
   Search,
@@ -294,7 +295,7 @@ export default function StudentHistoryPage() {
                       {isLowStakes ? <BookOpen size={10} /> : <ClipboardList size={10} />}
                       {isLowStakes ? 'Practice / Low-Stakes' : 'Graded Examination'}
                     </span>
-                    <span className="text-xs text-text-muted font-mono">{s.timestamp}</span>
+                    <span className="text-xs text-text-muted font-mono">{formatExamDate(s.timestamp)}</span>
                   </div>
 
                   <div className="flex items-center gap-2 text-xs text-text-muted">

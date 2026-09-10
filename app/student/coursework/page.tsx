@@ -13,6 +13,7 @@ import { getCurrentProfileClient } from '@/lib/services/auth';
 import { subscribeToStudentSessions } from '@/lib/services/supabaseSessionService';
 import { StudentSessionDetailModal } from '@/components/integrity/StudentSessionDetailModal';
 import { DatasetSession } from '@/types';
+import { formatExamDate } from '@/lib/formatters';
 import {
   BookOpen,
   ClipboardList,
@@ -284,7 +285,7 @@ export default function StudentCourseworkPage() {
                       <td className="py-3 px-4 font-mono font-bold text-text-primary text-xs">
                         {s.sessionId}
                       </td>
-                      <td className="py-3 px-3 font-mono text-[11px] text-text-muted">{s.timestamp}</td>
+                      <td className="py-3 px-3 font-mono text-[11px] text-text-muted">{formatExamDate(s.timestamp)}</td>
                       <td className="py-3 px-3">
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold border inline-flex items-center gap-1 ${

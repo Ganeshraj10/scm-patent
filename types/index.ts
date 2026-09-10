@@ -519,6 +519,12 @@ export interface GradedExamSession {
   hasBurstEvent?: boolean;
   interactions: ExamQuestionTelemetry[];
   answersPayload?: Record<string, any>;
+  sequenceSignature?: BehavioralSequenceSignature;
+  integrityOpportunityEvents?: IntegrityOpportunityEvent[];
+  behavioralConsistencyScore?: number;
+  behavioralStateInference?: BehavioralStateInference;
+  temporalPersistence?: TemporalPersistenceResult;
+  examEventTimeline?: ExamEventTimelineEntry[];
 }
 
 // ─── Stage 8: Behavioral Deviation & Risk Analysis Engine ────────────────────
@@ -594,6 +600,15 @@ export interface BehavioralAnalysisResult {
   summaryExplanation: string;
   warnings: string[];
   isEligibleForReport: boolean;
+
+  // Real-Time Behavioral Intelligence Additions
+  behavioralConsistencyScore?: number; // 0–100
+  behavioralConsistencyLabel?: string;
+  behavioralStateInference?: BehavioralStateInference;
+  integrityOpportunityEvents?: IntegrityOpportunityEvent[];
+  temporalPersistence?: TemporalPersistenceResult;
+  sequenceSignature?: BehavioralSequenceSignature;
+  examEventTimeline?: ExamEventTimelineEntry[];
 }
 
 // ─── Stage 9: Explainable Behavioral Risk Report ─────────────────────────────
@@ -680,7 +695,154 @@ export interface BehavioralRiskReport {
   disclaimer: string;
   warnings: string[];
   isEligibleForHumanReview: boolean;
+
+  // Real-Time Behavioral Intelligence Enhancements
+  behavioralConsistencyScore?: number; // 0–100
+  behavioralConsistencyLabel?: string;
+  behavioralStateInference?: BehavioralStateInference;
+  integrityOpportunityEvents?: IntegrityOpportunityEvent[];
+  temporalPersistence?: TemporalPersistenceResult;
+  sequenceSignature?: BehavioralSequenceSignature;
+  examEventTimeline?: ExamEventTimelineEntry[];
 }
+
+// ─── Stage: Real-Time Behavioral Intelligence & Sequence Signatures ──────────
+
+export type BehavioralEventType =
+  | 'question_view'
+  | 'pause'
+  | 'typing'
+  | 'character_insertion'
+  | 'answer_select'
+  | 'answer_change'
+  | 'revision'
+  | 'pointer_activity'
+  | 'scrolling'
+  | 'navigation'
+  | 'paste_attempt'
+  | 'submission'
+  | 'fullscreen_exit'
+  | 'page_visibility_change'
+  | 'connection_interrupt'
+  | 'reconnection';
+
+export interface BehavioralSequenceEvent {
+  id: string;
+  eventType: BehavioralEventType;
+  timestamp: string; // ISO string
+  deltaMs: number; // ms elapsed since previous event
+  durationMs?: number; // duration of the action/pause
+  questionId?: string;
+  sessionPosition?: number;
+  details?: Record<string, any>;
+}
+
+export interface TransitionCount {
+  fromEvent: BehavioralEventType;
+  toEvent: BehavioralEventType;
+  count: number;
+  probability: number;
+}
+
+export interface BehavioralSequenceSignature {
+  sessionId: string;
+  studentId: string;
+  totalEvents: number;
+  transitionMatrix: Record<string, Record<string, number>>;
+  topTransitions: TransitionCount[];
+  commonNGrams: string[]; // e.g. ['question_view->pause->typing', 'typing->answer_select']
+  transitionEntropy: number; // Information entropy of transitions
+  avgInterEventLatencyMs: number;
+  pauseFrequency: number;
+  sequenceSimilarityToBaseline?: number; // 0.0–1.0 similarity with trusted personal history
+  evaluatedAt: string;
+}
+
+export type IntegrityEventType =
+  | 'page_visibility_change'
+  | 'window_blur'
+  | 'fullscreen_exit'
+  | 'navigation_away'
+  | 'page_reload'
+  | 'copy_attempt'
+  | 'paste_attempt'
+  | 'connection_interrupt'
+  | 'reconnection'
+  | 'repeated_navigation';
+
+export interface IntegrityOpportunityEvent {
+  id: string;
+  eventType: IntegrityEventType;
+  timestamp: string; // ISO string
+  questionId?: string;
+  sessionPosition?: number;
+  durationMs?: number;
+  isIsolated: boolean;
+  occurrenceIndex: number;
+  contextSummary: string;
+}
+
+export type BehavioralState =
+  | 'Stable Interaction'
+  | 'Hesitation'
+  | 'Possible Confusion'
+  | 'Increased Uncertainty'
+  | 'Time Pressure'
+  | 'Interaction Disruption'
+  | 'Abrupt Behavioral Change';
+
+export interface BehavioralStateInference {
+  currentState: BehavioralState;
+  stateLabel: string;
+  confidence: number; // 0–100
+  reasoning: string;
+  observableFactors: string[];
+  stateTimeline: Array<{
+    timestamp: string;
+    state: BehavioralState;
+    trigger: string;
+    questionPosition?: number;
+  }>;
+}
+
+export interface RollingWindowConsistency {
+  windowIndex: number;
+  timestamp: string;
+  score: number; // 0–100
+  keyFactor: string;
+  state: BehavioralState;
+}
+
+export interface ContinuousConsistencyScore {
+  overallScore: number; // 0–100 (Higher = more consistent with established personal profile)
+  statusLabel: string;
+  rollingWindows: RollingWindowConsistency[];
+  factorsConsidered: string[];
+}
+
+export interface TemporalPersistenceResult {
+  persistenceTier: 'isolated' | 'short_lived' | 'persistent';
+  persistenceLabel: string;
+  persistenceScore: number; // 0–100 weight multiplier
+  eventFrequency: number;
+  isolatedEventCount: number;
+  repeatedEventCount: number;
+  explanation: string;
+}
+
+export interface ExamEventTimelineEntry {
+  id: string;
+  timestamp: string;
+  timeFormatted: string; // e.g. "10:02:14"
+  eventType: BehavioralEventType | IntegrityEventType;
+  category: 'interaction' | 'integrity_opportunity' | 'navigation' | 'lifecycle';
+  description: string;
+  questionId?: string;
+  sessionPosition?: number;
+  durationSec?: number;
+  isAnomalous?: boolean;
+}
+
 
 
 

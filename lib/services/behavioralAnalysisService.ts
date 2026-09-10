@@ -27,6 +27,16 @@ import {
   getStudentLowStakesRecords,
 } from '@/lib/services/datasetService';
 import {
+  extractSequenceSignature,
+  generateSyntheticSequenceEvents,
+} from '@/lib/services/behavioralSequenceEngine';
+import {
+  calculateContinuousConsistency,
+  inferBehavioralState,
+  evaluateTemporalPersistence,
+  buildExamEventTimeline,
+} from '@/lib/services/behavioralStateEngine';
+import {
   BehavioralAnalysisResult,
   QuestionAnalysis,
   FeatureDeviation,
@@ -487,8 +497,9 @@ export function analyzeSession(
   if (questionAnalyses.length > 0) {
     const meanQuestionScore = questionAnalyses.reduce((acc, q) => acc + q.questionScore, 0) / questionAnalyses.length;
     const maxQuestionScore = Math.max(...questionAnalyses.map((q) => q.questionScore));
-    // 70% mean score + 30% peak anomaly influence
-    rawScore = Math.round(meanQuestionScore * 0.7 + maxQuestionScore * 0.3);
+    // When peak question exhibits marked anomalous signals (e.g. paste + burst), allocate 60% peak weight
+    const peakWeight = maxQuestionScore >= 70 ? 0.6 : 0.35;
+    rawScore = Math.round(meanQuestionScore * (1 - peakWeight) + maxQuestionScore * peakWeight);
 
     if (deviceChangeDetected && !isColdStart) {
       rawScore = Math.min(100, rawScore + 5); // Contextual signal bonus
@@ -561,6 +572,54 @@ export function analyzeSession(
     summaryExplanation = `Substantial behavioral deviation from personal expectation observed across ${topFeatures}. Review is recommended to inspect question telemetry.`;
   }
 
+  // Extract / Retrieve Sequence Signature and Integrity Events
+  const liveSequenceSignature = liveSession?.sequenceSignature;
+  const liveIntegrityEvents = liveSession?.integrityOpportunityEvents || [];
+
+  const sequenceEvents = liveSession && liveSession.interactions.length > 0 && liveSession.sequenceSignature
+    ? [] // Signature already captured
+    : interactions.flatMap((q) =>
+        generateSyntheticSequenceEvents(
+          q.questionId,
+          q.sessionPosition,
+          q.questionDifficulty,
+          q.responseTimeSec,
+          q.answerRevisionCount,
+          q.pasteDetected === 1,
+          q.characterBurstFlag === 1
+        )
+      );
+
+  const sequenceSignature = liveSequenceSignature || extractSequenceSignature(sequenceEvents, sessionId, studentId);
+  const consistency = calculateContinuousConsistency(interactions, baseline, sequenceSignature);
+  const temporalPersistence = liveSession?.temporalPersistence || evaluateTemporalPersistence(interactions, liveIntegrityEvents);
+  const examEventTimeline = liveSession?.examEventTimeline || buildExamEventTimeline(sequenceEvents, liveIntegrityEvents, interactions);
+
+  const lastInteraction = interactions[interactions.length - 1];
+  const stateInference = liveSession?.behavioralStateInference || {
+    currentState: inferBehavioralState({
+      responseTimeSec: interactions.reduce((s, q) => s + q.responseTimeSec, 0) / Math.max(1, interactions.length),
+      expectedResponseTimeSec: baseline.overallFeatures.response_time_sec?.expectedValue || 25,
+      revisionCount: interactions.reduce((s, q) => s + q.answerRevisionCount, 0) / Math.max(1, interactions.length),
+      expectedRevisionCount: baseline.overallFeatures.answer_revision_count?.expectedValue || 1,
+      questionDifficulty: lastInteraction?.questionDifficulty || 0.5,
+      pasteDetected: interactions.some((q) => q.pasteDetected === 1),
+      characterBurst: interactions.some((q) => q.characterBurstFlag === 1),
+      sequenceSimilarity: sequenceSignature.sequenceSimilarityToBaseline || 1.0,
+      integrityEventsCountInWindow: liveIntegrityEvents.length,
+    }).state,
+    stateLabel: 'Inferred Interaction State',
+    confidence: isColdStart ? 50 : 85,
+    reasoning: 'Evaluated across session interactions, sequence transitions, and question difficulty.',
+    observableFactors: ['Pacing', 'Revisions', 'Sequence transitions'],
+    stateTimeline: consistency.rollingWindows.map((rw) => ({
+      timestamp: rw.timestamp,
+      state: rw.state,
+      trigger: rw.keyFactor,
+      questionPosition: rw.windowIndex,
+    })),
+  };
+
   const result: BehavioralAnalysisResult = {
     analysisId: `ANALYSIS_${sessionId}_${Date.now()}`,
     studentId,
@@ -584,6 +643,14 @@ export function analyzeSession(
     summaryExplanation,
     warnings,
     isEligibleForReport: !isColdStart,
+    // Real-Time Behavioral Intelligence Additions
+    behavioralConsistencyScore: consistency.overallScore,
+    behavioralConsistencyLabel: consistency.statusLabel,
+    behavioralStateInference: stateInference,
+    integrityOpportunityEvents: liveIntegrityEvents,
+    temporalPersistence,
+    sequenceSignature,
+    examEventTimeline,
   };
 
   analysisCache.set(sessionId, result);

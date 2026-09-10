@@ -22,6 +22,7 @@ import { Card, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { getGradedExamSession } from '@/lib/services/examSessionService';
 import { GradedExamSession } from '@/types';
+import { formatAttendedDate, formatExamDate } from '@/lib/formatters';
 
 export default function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -79,9 +80,14 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             </span>
           </div>
           <p className="text-xs text-text-muted">
-            {session.examTitle} · Completed at {session.completedAt || session.startedAt} · Device: {session.deviceType}
+            {session.examTitle} · {formatAttendedDate(session.startedAt, session.completedAt)} · Device: {session.deviceType}
           </p>
         </div>
+        <Link href={`/instructor/reports/${session.sessionId}`}>
+          <Button variant="outline" size="sm" className="text-xs gap-1.5 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/10">
+            <ShieldCheck size={14} /> View Behavioral Report
+          </Button>
+        </Link>
       </div>
 
       {/* Objective Telemetry Banner */}

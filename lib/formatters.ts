@@ -6,28 +6,65 @@
 /**
  * Format an ISO date string to a human-readable date.
  */
-export function formatDate(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+export function formatDate(isoString: string | null | undefined): string {
+  if (!isoString) return '—';
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return '—';
+  }
 }
 
 /**
- * Format an ISO date string to date + time.
+ * Format an ISO date string to date + time (e.g. "10 Sep 2026, 10:32 AM").
  */
-export function formatDateTime(isoString: string): string {
-  const date = new Date(isoString);
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+export function formatDateTime(isoString: string | null | undefined): string {
+  if (!isoString) return '—';
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return '—';
+  }
 }
+
+/**
+ * Consistent date + time representation for examination events across student and instructor screens.
+ */
+export function formatExamDate(isoString: string | null | undefined): string {
+  return formatDateTime(isoString);
+}
+
+/**
+ * Formats an exam session's attendance period distinguishing started vs submitted times.
+ */
+export function formatAttendedDate(startedAt?: string | null, submittedAt?: string | null): string {
+  if (startedAt && submittedAt) {
+    return `Started: ${formatExamDate(startedAt)} · Submitted: ${formatExamDate(submittedAt)}`;
+  }
+  if (startedAt) {
+    return `Attended: ${formatExamDate(startedAt)}`;
+  }
+  if (submittedAt) {
+    return `Submitted: ${formatExamDate(submittedAt)}`;
+  }
+  return '—';
+}
+
 
 /**
  * Format milliseconds to a human-readable duration string.

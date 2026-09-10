@@ -11,7 +11,15 @@
  * - NO audio or video is captured.
  */
 
-import { ExamQuestionTelemetry, QuestionType } from '@/types';
+import {
+  ExamQuestionTelemetry,
+  QuestionType,
+  BehavioralSequenceEvent,
+  BehavioralEventType,
+  IntegrityOpportunityEvent,
+  IntegrityEventType,
+} from '@/types';
+import { createSequenceEvent } from '@/lib/services/behavioralSequenceEngine';
 
 // ─── Character Burst Configuration ──────────────────────────────────────────
 
@@ -111,7 +119,7 @@ export interface QuestionTelemetryState {
   testCasesPassed: number;
   testCasesTotal: number;
 
-  // Time & Interaction metrics
+  // Time & Interaction metrics (All 9 Core Features)
   totalTimeMs: number;
   startTimeMs: number | null;
   pointerDistancePx: number;
@@ -129,6 +137,11 @@ export interface QuestionTelemetryState {
   // Real-time burst tracking state (ephemeral)
   lastInputTimeMs: number | null;
   lastInputLength: number;
+
+  // Sequence and Integrity events tracking
+  sequenceEvents: BehavioralSequenceEvent[];
+  integrityEvents: IntegrityOpportunityEvent[];
+  lastEventTimestampMs: number | null;
 }
 
 export function detectDeviceType(): 'web_desktop' | 'web_laptop' | 'mobile' {
@@ -153,6 +166,11 @@ export function createInitialTelemetryState(
   questionType: QuestionType = 'mcq',
   initialContent: string = ''
 ): QuestionTelemetryState {
+  const now = Date.now();
+  const initialSequenceEvents: BehavioralSequenceEvent[] = [
+    createSequenceEvent('question_view', null, now, questionId, sessionPosition),
+  ];
+
   return {
     questionId,
     questionType,
@@ -171,7 +189,7 @@ export function createInitialTelemetryState(
     testCasesPassed: 0,
     testCasesTotal: 0,
     totalTimeMs: 0,
-    startTimeMs: null,
+    startTimeMs: now,
     pointerDistancePx: 0,
     pointerSampleCount: 0,
     scrollDistancePx: 0,
@@ -183,7 +201,69 @@ export function createInitialTelemetryState(
     burstReason: 'Normal typing cadence',
     lastInputTimeMs: null,
     lastInputLength: initialContent ? initialContent.length : 0,
+    sequenceEvents: initialSequenceEvents,
+    integrityEvents: [],
+    lastEventTimestampMs: now,
   };
+}
+
+// ─── Sequence Event Helper ──────────────────────────────────────────────────
+
+export function recordSequenceEvent(
+  state: QuestionTelemetryState,
+  eventType: BehavioralEventType,
+  details?: Record<string, any>
+): void {
+  const now = Date.now();
+  const prevTime = state.lastEventTimestampMs || state.startTimeMs || now;
+  const evt = createSequenceEvent(
+    eventType,
+    prevTime,
+    now,
+    state.questionId,
+    state.sessionPosition,
+    undefined,
+    details
+  );
+  state.sequenceEvents.push(evt);
+  state.lastEventTimestampMs = now;
+}
+
+export function recordIntegrityOpportunity(
+  state: QuestionTelemetryState,
+  eventType: IntegrityEventType,
+  contextSummary: string,
+  durationMs?: number
+): IntegrityOpportunityEvent {
+  const now = new Date();
+  const existingSameType = state.integrityEvents.filter((e) => e.eventType === eventType);
+  const occurrenceIndex = existingSameType.length + 1;
+  const isIsolated = occurrenceIndex === 1;
+
+  const event: IntegrityOpportunityEvent = {
+    id: `INT_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    eventType,
+    timestamp: now.toISOString(),
+    questionId: state.questionId,
+    sessionPosition: state.sessionPosition,
+    durationMs,
+    isIsolated,
+    occurrenceIndex,
+    contextSummary: `${contextSummary} (Occurrence ${occurrenceIndex})`,
+  };
+
+  state.integrityEvents.push(event);
+
+  // Map to sequence event as well
+  let seqType: BehavioralEventType = 'page_visibility_change';
+  if (eventType === 'fullscreen_exit') seqType = 'fullscreen_exit';
+  if (eventType === 'paste_attempt') seqType = 'paste_attempt';
+  if (eventType === 'connection_interrupt') seqType = 'connection_interrupt';
+  if (eventType === 'reconnection') seqType = 'reconnection';
+  if (eventType === 'navigation_away') seqType = 'navigation';
+
+  recordSequenceEvent(state, seqType, { integrityEventId: event.id });
+  return event;
 }
 
 // ─── Behavioral Signal Handlers ─────────────────────────────────────────────
@@ -198,9 +278,12 @@ export function recordMCQSelection(
   const now = Date.now();
   if (state.selectedAnswerIndex === null) {
     state.initialAnswerTimeMs = now;
+    recordSequenceEvent(state, 'answer_select', { optionIndex });
   } else if (state.selectedAnswerIndex !== optionIndex) {
     state.revisionCount += 1;
     state.lastRevisionTimeMs = now;
+    recordSequenceEvent(state, 'answer_change', { from: state.selectedAnswerIndex, to: optionIndex });
+    recordSequenceEvent(state, 'revision', { revisionNumber: state.revisionCount });
   }
   state.selectedAnswerIndex = optionIndex;
 }
@@ -223,9 +306,12 @@ export function recordMultiSelectToggle(
 
   if (state.initialAnswerTimeMs === null) {
     state.initialAnswerTimeMs = now;
+    recordSequenceEvent(state, 'answer_select', { optionIndex });
   } else {
     state.revisionCount += 1;
     state.lastRevisionTimeMs = now;
+    recordSequenceEvent(state, 'answer_change', { toggled: optionIndex });
+    recordSequenceEvent(state, 'revision', { revisionNumber: state.revisionCount });
   }
 
   state.selectedAnswerIndices = Array.from(current).sort((a, b) => a - b);
@@ -252,14 +338,19 @@ export function recordTextChange(
     if (rateResult.isBurst) {
       state.characterBurstFlag = 1;
       state.burstReason = rateResult.reason;
+      recordSequenceEvent(state, 'character_insertion', { burst: true, rate: rateResult.insertionRateCharsPerSec });
+    } else {
+      recordSequenceEvent(state, 'typing', { deltaChars });
     }
   }
 
   if (state.initialAnswerTimeMs === null && newText.length > 0) {
     state.initialAnswerTimeMs = now;
+    recordSequenceEvent(state, 'answer_select', { initialInputLength: newText.length });
   } else if (newText !== state.textAnswer) {
     state.revisionCount += 1;
     state.lastRevisionTimeMs = now;
+    recordSequenceEvent(state, 'revision', { revisionNumber: state.revisionCount });
   }
 
   state.textAnswer = newText;
@@ -292,6 +383,9 @@ export function recordCodeEdit(
     if (rateResult.isBurst) {
       state.characterBurstFlag = 1;
       state.burstReason = rateResult.reason;
+      recordSequenceEvent(state, 'character_insertion', { burst: true, rate: rateResult.insertionRateCharsPerSec });
+    } else {
+      recordSequenceEvent(state, 'typing', { deltaChars });
     }
   }
 
@@ -299,6 +393,7 @@ export function recordCodeEdit(
   state.codeAnswer = newCode;
   state.lastInputTimeMs = now;
   state.lastInputLength = newCode.length;
+  recordSequenceEvent(state, 'revision', { codeRevisionCount: state.codeRevisionCount });
 }
 
 /**
@@ -312,6 +407,7 @@ export function recordCodeRun(
   state.codeRunCount += 1;
   state.testCasesPassed = passed;
   state.testCasesTotal = total;
+  recordSequenceEvent(state, 'pointer_activity', { action: 'run_tests', passed, total });
 }
 
 /**
@@ -319,6 +415,8 @@ export function recordCodeRun(
  */
 export function recordPasteEvent(state: QuestionTelemetryState): void {
   state.pasteDetected = 1;
+  recordSequenceEvent(state, 'paste_attempt', { timestamp: Date.now() });
+  recordIntegrityOpportunity(state, 'paste_attempt', 'Clipboard paste intercepted on question');
 }
 
 // ─── Finalize Telemetry Record ──────────────────────────────────────────────
@@ -334,20 +432,23 @@ export function finalizeQuestionTelemetry(
   const timeOfDayStr = now.toTimeString().split(' ')[0]; // '14:32:00'
   const timestampStr = now.toISOString().replace('T', ' ').substring(0, 19);
 
-  // Calculate active response time
+  // Record submission / transition event
+  recordSequenceEvent(state, 'submission', { isAnswerCorrect });
+
+  // Calculate active response time (Core Feature 1)
   let finalTimeMs = state.totalTimeMs;
   if (state.startTimeMs !== null) {
     finalTimeMs += Date.now() - state.startTimeMs;
   }
   const responseTimeSec = Number(Math.max(0.5, finalTimeMs / 1000).toFixed(1));
 
-  // Revision timing
+  // Revision timing (Core Feature 3)
   let revisionTimeSec = 0;
   if (state.initialAnswerTimeMs && state.lastRevisionTimeMs && state.lastRevisionTimeMs > state.initialAnswerTimeMs) {
     revisionTimeSec = Number(((state.lastRevisionTimeMs - state.initialAnswerTimeMs) / 1000).toFixed(1));
   }
 
-  // Pointer speed
+  // Pointer speed (Core Features 4 & 5)
   const pointerDist = Number(state.pointerDistancePx.toFixed(1));
   const pointerSpeed = responseTimeSec > 0 ? Number((pointerDist / responseTimeSec).toFixed(1)) : 0;
 
@@ -367,8 +468,11 @@ export function finalizeQuestionTelemetry(
     selectedAnswerIndex: state.selectedAnswerIndex,
     selectedAnswerIndices: state.selectedAnswerIndices.length > 0 ? state.selectedAnswerIndices : undefined,
     isAnswerCorrect: isAnswerCorrect !== undefined ? isAnswerCorrect : false,
+    // 1. Response Time
     responseTimeSec,
+    // 2. Answer Revision Count
     answerRevisionCount: state.revisionCount,
+    // 3. Answer Revision Time
     answerRevisionTimeSec: revisionTimeSec,
     codeRevisionCount: state.codeRevisionCount > 0 ? state.codeRevisionCount : undefined,
     timeToFirstEditSec,
@@ -376,11 +480,17 @@ export function finalizeQuestionTelemetry(
     testCasesPassed: state.testCasesTotal > 0 ? state.testCasesPassed : undefined,
     testCasesTotal: state.testCasesTotal > 0 ? state.testCasesTotal : undefined,
     textAnswerLength: state.textAnswer.length > 0 ? state.textAnswer.length : undefined,
+    // 4. Pointer Distance
     pointerDistancePx: pointerDist,
+    // 5. Pointer Average Speed
     pointerAvgSpeedPxS: pointerSpeed,
+    // 6. Scroll Distance
     scrollDistancePx: Number(state.scrollDistancePx.toFixed(1)),
+    // 7. Scroll Events
     scrollEvents: state.scrollEventsCount,
+    // 8. Paste Detected
     pasteDetected: state.pasteDetected > 0 ? 1 : 0,
+    // 9. Character Burst Flag
     characterBurstFlag: state.characterBurstFlag > 0 ? 1 : 0,
     maxInsertionRate: state.maxInsertionRate > 0 ? state.maxInsertionRate : undefined,
     maxCharsInserted: state.maxCharsInserted > 0 ? state.maxCharsInserted : undefined,

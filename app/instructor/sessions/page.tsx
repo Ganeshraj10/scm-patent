@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Filter, ArrowRight, Monitor, Smartphone, Laptop, Eye, Search, Layers, Clock, Activity } from 'lucide-react';
+import { Search, Eye, Smartphone, Laptop, Monitor, ArrowRight } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { getAllGradedExamSessions } from '@/lib/services/examSessionService';
 import { GradedExamSession } from '@/types';
+import { formatExamDate } from '@/lib/formatters';
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<GradedExamSession[]>([]);
@@ -126,7 +127,7 @@ export default function SessionsPage() {
                     </span>
                   </td>
                   <td className="py-3 px-3 font-mono text-[11px] text-text-muted">
-                    {s.startedAt}
+                    {formatExamDate(s.startedAt || s.completedAt)}
                   </td>
                   <td className="py-3 px-3 font-mono text-text-primary">
                     {s.completedQuestionsCount} / {s.questionCount}

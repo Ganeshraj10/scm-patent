@@ -12,7 +12,9 @@ import {
   X,
   ChevronRight,
   GraduationCap,
+  LogOut,
 } from 'lucide-react';
+import { signOutUserClient } from '@/lib/services/auth';
 
 interface StudentNavItem {
   label: string;
@@ -141,15 +143,38 @@ export function StudentSidebar({ mobileOpen = false, onMobileClose }: StudentSid
         })}
       </nav>
 
-      {/* Privacy Notice Card */}
-      <div className="p-4 border-t border-border">
-        <div className="p-3 rounded-xl bg-surface-900 border border-border text-[11px] text-text-muted space-y-1">
-          <div className="flex items-center gap-1.5 font-semibold text-text-primary text-[11px]">
-            <ShieldCheck size={13} className="text-emerald-400" />
+      {/* Privacy Notice Card & Logout */}
+      <div className="p-3 border-t border-border space-y-2">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-surface-800 border border-border">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 rounded-full bg-sky-500/20 border border-sky-500/30 flex items-center justify-center flex-shrink-0">
+              <span className="text-[10px] font-bold text-sky-400">S</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-text-primary truncate">Alex Chen</p>
+              <p className="text-[10px] text-text-muted truncate">Student S001</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await signOutUserClient();
+            }}
+            className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+            title="Log out"
+            aria-label="Log Out"
+          >
+            <LogOut size={15} />
+          </button>
+        </div>
+
+        <div className="p-2.5 rounded-lg bg-surface-900 border border-border text-[10px] text-text-muted space-y-1">
+          <div className="flex items-center gap-1.5 font-semibold text-text-primary text-[10px]">
+            <ShieldCheck size={12} className="text-emerald-400" />
             <span>Private Behavioral History</span>
           </div>
-          <p className="text-[10px] text-text-muted leading-tight">
-            Your longitudinal interaction history belongs exclusively to you and forms your future baseline.
+          <p className="text-[9px] text-text-muted leading-tight">
+            Your longitudinal history belongs exclusively to you and forms your personalized baseline.
           </p>
         </div>
       </div>

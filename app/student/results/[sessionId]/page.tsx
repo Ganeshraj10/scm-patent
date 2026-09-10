@@ -7,6 +7,7 @@ import { getSessionById } from '@/data/mockSessions';
 import { CheckCircle, AlertTriangle, ShieldCheck, Clock, FileText } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { formatExamDate } from '@/lib/formatters';
 
 export default function ExamResultPage({ params }: { params: Promise<{ sessionId: string }> }) {
   const router = useRouter();
@@ -76,7 +77,7 @@ export default function ExamResultPage({ params }: { params: Promise<{ sessionId
             </div>
             <div className="text-right">
               <p className="text-xs text-text-muted uppercase tracking-wider font-semibold mb-1">Date</p>
-              <p className="text-text-secondary">{new Date(session.date).toLocaleDateString()}</p>
+              <p className="text-text-secondary">{formatExamDate(session.date || session.submitted_at || session.started_at)}</p>
             </div>
           </div>
 

@@ -21,6 +21,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+import { formatExamDate } from '@/lib/formatters';
+
 interface StudentSessionDetailModalProps {
   studentId: string;
   sessionId: string | null;
@@ -73,7 +75,7 @@ export function StudentSessionDetailModal({
               >
                 {isLowStakes ? 'Practice / Low-Stakes' : 'Graded Examination'}
               </span>
-              <span className="font-bold text-text-primary">{session.timestamp}</span>
+              <span className="font-bold text-text-primary">{formatExamDate(session.timestamp)}</span>
               <span className="text-text-muted font-mono">({session.deviceType})</span>
             </div>
             <p className="text-[11px] text-text-muted">

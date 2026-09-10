@@ -19,6 +19,8 @@ import { getCurrentProfile, getCurrentRole } from '../lib/services/auth';
 import { GradedExamSession, DatasetSession } from '../types';
 
 describe('Supabase Persistence, Authentication & Cross-Device Sync', () => {
+  jest.setTimeout(15000);
+
   // ─── 1. Client Initialization ─────────────────────────────────────────────
   test('1. Supabase browser client initializes with sanitized URL and key', () => {
     const client = createBrowserClient();

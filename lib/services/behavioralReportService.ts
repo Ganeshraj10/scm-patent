@@ -238,6 +238,15 @@ export function generateRiskReport(
     disclaimer: 'Behavioral deviation is not proof of misconduct. Human review is required before taking any administrative or academic action.',
     warnings: analysis.warnings,
     isEligibleForHumanReview: !isColdStart,
+
+    // Real-Time Behavioral Intelligence Additions
+    behavioralConsistencyScore: analysis.behavioralConsistencyScore,
+    behavioralConsistencyLabel: analysis.behavioralConsistencyLabel,
+    behavioralStateInference: analysis.behavioralStateInference,
+    integrityOpportunityEvents: analysis.integrityOpportunityEvents,
+    temporalPersistence: analysis.temporalPersistence,
+    sequenceSignature: analysis.sequenceSignature,
+    examEventTimeline: analysis.examEventTimeline,
   };
 
   return report;

@@ -15,7 +15,9 @@ import {
   ChevronRight,
   Activity,
   FileText,
+  LogOut,
 } from 'lucide-react';
+import { signOutUserClient } from '@/lib/services/auth';
 
 interface NavItem {
   label: string;
@@ -162,22 +164,24 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
         <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-surface-700 border border-border">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-7 h-7 rounded-full bg-indigo-600/30 border border-indigo-500/30 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-indigo-400">A</span>
+              <span className="text-xs font-bold text-indigo-400">I</span>
             </div>
             <div className="min-w-0">
               <p className="text-xs font-semibold text-text-primary truncate">Instructor</p>
-              <p className="text-[10px] text-text-muted truncate">admin@university.edu</p>
+              <p className="text-[10px] text-text-muted truncate">instructor@examguard.io</p>
             </div>
           </div>
-          <form action="/auth/logout" method="POST">
-            <button
-              type="submit"
-              className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-              title="Log out"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-            </button>
-          </form>
+          <button
+            type="button"
+            onClick={async () => {
+              await signOutUserClient();
+            }}
+            className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+            title="Log out"
+            aria-label="Log Out"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          </button>
         </div>
       </div>
     </div>

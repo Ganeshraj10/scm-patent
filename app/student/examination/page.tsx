@@ -28,9 +28,11 @@ import {
   recordCodeEdit,
   recordCodeRun,
   recordPasteEvent,
+  recordIntegrityOpportunity,
+  recordSequenceEvent,
   detectDeviceType,
 } from '@/lib/services/examFeatureExtractor';
-import { Question, GradedExamSession } from '@/types';
+import { Question, GradedExamSession, IntegrityOpportunityEvent } from '@/types';
 import { MCQView } from '@/components/examination/MCQView';
 import { MultipleSelectView } from '@/components/examination/MultipleSelectView';
 import { ShortAnswerView } from '@/components/examination/ShortAnswerView';
@@ -51,6 +53,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
+import { formatExamDate, formatAttendedDate } from '@/lib/formatters';
+
 type ExamPhase = 'intro' | 'active' | 'completed';
 
 const EXAM_DURATION_SECONDS = 25 * 60; // 25 minutes for validation exam
@@ -67,6 +71,11 @@ export default function ExaminationPage() {
   const [questions, setQuestions] = useState<Question[]>(validationExamQuestions);
   const [currentIndex, setCurrentIndex] = useState<number>(0);
 
+  // Fullscreen state
+  const [isFullscreenActive, setIsFullscreenActive] = useState<boolean>(false);
+  const [fullscreenSupported, setFullscreenSupported] = useState<boolean>(true);
+  const lastFullscreenStateRef = useRef<boolean>(false);
+
   // Resolve active student from Supabase Auth on mount
   useEffect(() => {
     getCurrentProfileClient().then((profile) => {
@@ -76,6 +85,16 @@ export default function ExaminationPage() {
         setStudentId(profile.student_id);
       }
     });
+
+    if (typeof document !== 'undefined') {
+      const isSupported = Boolean(
+        document.fullscreenEnabled ||
+        (document as any).webkitFullscreenEnabled ||
+        (document as any).mozFullScreenEnabled ||
+        (document as any).msFullscreenEnabled
+      );
+      setFullscreenSupported(isSupported);
+    }
   }, []);
   
   // Student answer state
@@ -90,6 +109,30 @@ export default function ExaminationPage() {
   const telemetryMap = useRef<Record<number, QuestionTelemetryState>>({});
   const lastMousePos = useRef<{ x: number; y: number } | null>(null);
   const lastScrollY = useRef<number | null>(null);
+  const integrityEventsRef = useRef<IntegrityOpportunityEvent[]>([]);
+
+  // Interactive Fullscreen Request Helper
+  const handleRequestFullscreen = useCallback(async () => {
+    if (typeof document === 'undefined') return;
+    try {
+      const docEl = document.documentElement as any;
+      const requestMethod =
+        docEl.requestFullscreen ||
+        docEl.webkitRequestFullscreen ||
+        docEl.mozRequestFullScreen ||
+        docEl.msRequestFullscreen;
+
+      if (requestMethod) {
+        await requestMethod.call(docEl);
+        setIsFullscreenActive(true);
+        lastFullscreenStateRef.current = true;
+      }
+    } catch (err) {
+      console.warn('[ExaminationPage] Fullscreen request not permitted or refused:', err);
+      setIsFullscreenActive(false);
+      lastFullscreenStateRef.current = false;
+    }
+  }, []);
 
   // Initialize active question telemetry state
   const initializeQuestionTelemetry = useCallback((index: number, questionList: Question[]) => {
@@ -150,7 +193,7 @@ export default function ExaminationPage() {
   }, [session, currentIndex, questions]);
 
   // Start Exam Action
-  const handleStartExam = () => {
+  const handleStartExam = async () => {
     const examQuestions = questions.length > 0 ? questions : validationExamQuestions;
     if (questions.length === 0) {
       setQuestions(examQuestions);
@@ -163,6 +206,9 @@ export default function ExaminationPage() {
       questionCount: examQuestions.length,
       deviceType: detectDeviceType(),
     });
+
+    // Request fullscreen on explicit start interaction
+    await handleRequestFullscreen();
 
     setSession(newSession);
     initializeQuestionTelemetry(0, examQuestions);
@@ -245,7 +291,7 @@ export default function ExaminationPage() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [phase, currentIndex]);
 
-  // Visibility change handling
+  // Integrity Opportunity Events: Blur, Focus, Fullscreen, Copy, and Visibility
   useEffect(() => {
     if (phase !== 'active') return;
 
@@ -258,13 +304,66 @@ export default function ExaminationPage() {
           state.totalTimeMs += Date.now() - state.startTimeMs;
           state.startTimeMs = null;
         }
+        const evt = recordIntegrityOpportunity(state, 'page_visibility_change', 'Tab hidden or switched');
+        integrityEventsRef.current.push(evt);
       } else {
         state.startTimeMs = Date.now();
+        recordSequenceEvent(state, 'reconnection');
+      }
+    };
+
+    const handleBlur = () => {
+      const state = telemetryMap.current[currentIndex];
+      if (state) {
+        const evt = recordIntegrityOpportunity(state, 'window_blur', 'Window lost focus');
+        integrityEventsRef.current.push(evt);
+      }
+    };
+
+    const handleFullscreenChange = () => {
+      const isFs = Boolean(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      );
+
+      setIsFullscreenActive(isFs);
+
+      const state = telemetryMap.current[currentIndex];
+      // Only record fullscreen exit event if transitioning from previously active to inactive
+      if (!isFs && lastFullscreenStateRef.current && state) {
+        const evt = recordIntegrityOpportunity(state, 'fullscreen_exit', 'Exited fullscreen mode');
+        integrityEventsRef.current.push(evt);
+      }
+      lastFullscreenStateRef.current = isFs;
+    };
+
+    const handleCopy = () => {
+      const state = telemetryMap.current[currentIndex];
+      if (state) {
+        const evt = recordIntegrityOpportunity(state, 'copy_attempt', 'Exam content copy attempt');
+        integrityEventsRef.current.push(evt);
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    window.addEventListener('copy', handleCopy);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+      window.removeEventListener('copy', handleCopy);
+    };
   }, [phase, currentIndex]);
 
   // ─── Interaction Handlers ──────────────────────────────────────────────────
@@ -331,6 +430,9 @@ export default function ExaminationPage() {
 
     try {
       flushCurrentQuestionTelemetry();
+      if (integrityEventsRef.current.length > 0) {
+        session.integrityOpportunityEvents = [...integrityEventsRef.current];
+      }
       const updated = await completeGradedExamSessionAsync(session.sessionId);
       if (updated) {
         setSession({ ...updated });
@@ -448,33 +550,47 @@ export default function ExaminationPage() {
               </div>
             </div>
 
-            {/* Privacy & Data Minimization UX Notice */}
-            <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2">
-              <div className="flex items-center gap-2 text-indigo-300 font-bold text-xs">
-                <ShieldCheck size={16} className="text-emerald-400 shrink-0" />
-                <span>Examination Integrity & Privacy Notice</span>
-              </div>
-              <p className="text-[11px] text-text-muted leading-relaxed">
-                ExamGuard collects derived interaction metrics (response time, cursor movement speed, code revision frequency, and scroll activity) to validate examination integrity.
-              </p>
-              <div className="p-2.5 rounded-lg bg-surface-900/80 border border-border/80 text-[11px] text-emerald-400/90 font-medium space-y-1">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 size={13} className="text-emerald-400" />
-                  <span>Privacy Guarantees:</span>
+            {/* Fullscreen Requirement & Privacy Notice */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2">
+                <div className="flex items-center gap-2 text-indigo-300 font-bold text-xs">
+                  <ShieldCheck size={16} className="text-sky-400 shrink-0" />
+                  <span>Fullscreen Requirement</span>
                 </div>
-                <p className="text-[10px] text-text-muted pl-4">
-                  The system does <strong>NOT</strong> collect audio, video, webcam streams, raw keystrokes, or clipboard text contents.
+                <p className="text-[11px] text-text-muted leading-relaxed">
+                  Graded examinations require fullscreen mode to establish interaction continuity. Fullscreen will be requested when you click Start below.
                 </p>
+                <div className="p-2.5 rounded-lg bg-surface-900/80 border border-border/80 text-[10px] text-sky-300 font-medium">
+                  {fullscreenSupported
+                    ? 'Browser Fullscreen API is supported on this device.'
+                    : 'Note: Fullscreen may be restricted on some mobile browsers. The exam will adapt gracefully.'}
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2">
+                <div className="flex items-center gap-2 text-indigo-300 font-bold text-xs">
+                  <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+                  <span>Privacy Guarantees</span>
+                </div>
+                <p className="text-[11px] text-text-muted leading-relaxed">
+                  ExamGuard analyzes non-invasive behavioral pacing metrics (response time, code revision cadence, and scrolling).
+                </p>
+                <div className="p-2.5 rounded-lg bg-surface-900/80 border border-border/80 text-[10px] text-emerald-400/90 font-medium">
+                  Zero video, webcam, microphone, or raw keystroke recording.
+                </div>
               </div>
             </div>
 
             {/* Start Button */}
-            <div className="pt-2 flex justify-end">
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border/60">
+              <span className="text-[11px] text-text-muted">
+                Clicking Start will launch fullscreen mode and begin the 25-minute timer.
+              </span>
               <Button
                 variant="primary"
                 size="lg"
                 onClick={handleStartExam}
-                className="text-sm font-bold shadow-lg shadow-indigo-500/20 px-8"
+                className="text-sm font-bold shadow-lg shadow-indigo-500/20 px-8 w-full sm:w-auto"
               >
                 Start Validation Examination
                 <ArrowRight size={16} className="ml-2" />
@@ -489,20 +605,45 @@ export default function ExaminationPage() {
         <div className="space-y-5">
           {/* Top Exam Header Bar */}
           <Card padding="sm" className="bg-surface-800/90 border-border">
-            <div className="p-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
+            <div className="p-2 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">
                     Graded Validation Session
                   </span>
                   {getTypeBadge(currentQ.type)}
+
+                  {/* Persistent Fullscreen Status Indicator */}
+                  {isFullscreenActive ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                      <ShieldCheck size={11} className="text-emerald-400" />
+                      FULLSCREEN: Active
+                    </span>
+                  ) : (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                        <AlertTriangle size={11} className="text-amber-400" />
+                        FULLSCREEN: Exited / Attention Required
+                      </span>
+                      {fullscreenSupported && (
+                        <button
+                          type="button"
+                          onClick={handleRequestFullscreen}
+                          className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/40 transition-colors cursor-pointer"
+                          title="Re-enter Fullscreen Mode"
+                        >
+                          Re-enter Fullscreen
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <h2 className="text-sm font-bold text-text-primary">
                   {VALIDATION_EXAM_TITLE}
                 </h2>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 justify-between lg:justify-end">
                 {/* Timer */}
                 <div
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono text-xs font-bold border ${
@@ -708,24 +849,32 @@ export default function ExaminationPage() {
               </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-surface-700/40 border border-border text-xs space-y-2 text-left">
+            <div className="p-4 rounded-xl bg-surface-700/40 border border-border text-xs space-y-2 text-left font-mono">
               <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-text-muted">Session ID:</span>
-                <span className="font-mono font-bold text-sky-400">{session?.sessionId}</span>
+                <span className="text-text-muted font-sans">Session ID:</span>
+                <span className="font-bold text-sky-400">{session?.sessionId}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-text-muted">Student ID:</span>
-                <span className="font-mono font-bold text-text-primary">{session?.studentId}</span>
+                <span className="text-text-muted font-sans">Student ID:</span>
+                <span className="font-bold text-text-primary">{session?.studentId}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-border/50">
-                <span className="text-text-muted">Questions Answered:</span>
-                <span className="font-mono font-bold text-text-primary">
+                <span className="text-text-muted font-sans">Started:</span>
+                <span className="text-text-secondary">{formatExamDate(session?.startedAt)}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-border/50">
+                <span className="text-text-muted font-sans">Submitted:</span>
+                <span className="text-text-secondary">{formatExamDate(session?.completedAt || new Date().toISOString())}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-border/50">
+                <span className="text-text-muted font-sans">Questions Answered:</span>
+                <span className="font-bold text-text-primary">
                   {answeredCount} of {questions.length}
                 </span>
               </div>
               <div className="flex justify-between py-1">
-                <span className="text-text-muted">Session Status:</span>
-                <span className="font-bold text-emerald-400">Completed & Persisted</span>
+                <span className="text-text-muted font-sans">Session Status:</span>
+                <span className="font-bold text-emerald-400 font-sans">Completed & Persisted to Supabase</span>
               </div>
             </div>
 

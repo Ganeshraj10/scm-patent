@@ -97,6 +97,18 @@ export function saveQuestionTelemetry(
   return session;
 }
 
+import { getStudentBaseline } from '@/lib/services/personalizedBaselineService';
+import {
+  extractSequenceSignature,
+  generateSyntheticSequenceEvents,
+} from '@/lib/services/behavioralSequenceEngine';
+import {
+  calculateContinuousConsistency,
+  inferBehavioralState,
+  evaluateTemporalPersistence,
+  buildExamEventTimeline,
+} from '@/lib/services/behavioralStateEngine';
+
 export function completeGradedExamSession(sessionId: string): GradedExamSession | null {
   const session = getGradedExamSession(sessionId);
   if (!session) return null;
@@ -116,6 +128,59 @@ export function completeGradedExamSession(sessionId: string): GradedExamSession 
     session.totalCodeRevisions = totalCodeRevs;
     session.hasPasteEvent = session.interactions.some((q) => q.pasteDetected === 1);
     session.hasBurstEvent = session.interactions.some((q) => q.characterBurstFlag === 1);
+
+    // Sequence Signature & Real-Time Intelligence Enrichment
+    const baseline = getStudentBaseline(session.studentId);
+    
+    // If no live sequence events were attached, synthesize high-level sequence representation
+    const sequenceEvents = session.interactions.flatMap((q) =>
+      generateSyntheticSequenceEvents(
+        q.questionId,
+        q.sessionPosition,
+        q.questionDifficulty,
+        q.responseTimeSec,
+        q.answerRevisionCount,
+        q.pasteDetected === 1,
+        q.characterBurstFlag === 1
+      )
+    );
+
+    const sequenceSignature = extractSequenceSignature(sequenceEvents, sessionId, session.studentId);
+    session.sequenceSignature = sequenceSignature;
+
+    const integrityEvents = session.integrityOpportunityEvents || [];
+    const consistency = calculateContinuousConsistency(session.interactions, baseline, sequenceSignature);
+    session.behavioralConsistencyScore = consistency.overallScore;
+
+    const lastInteraction = session.interactions[session.interactions.length - 1];
+    const stateInference = inferBehavioralState({
+      responseTimeSec: session.avgResponseTimeSec || 20,
+      expectedResponseTimeSec: baseline.overallFeatures.response_time_sec?.expectedValue || 25,
+      revisionCount: session.avgRevisionCount || 1,
+      expectedRevisionCount: baseline.overallFeatures.answer_revision_count?.expectedValue || 1,
+      questionDifficulty: lastInteraction?.questionDifficulty || 0.5,
+      pasteDetected: session.hasPasteEvent || false,
+      characterBurst: session.hasBurstEvent || false,
+      sequenceSimilarity: sequenceSignature.sequenceSimilarityToBaseline || 1.0,
+      integrityEventsCountInWindow: integrityEvents.length,
+    });
+
+    session.behavioralStateInference = {
+      currentState: stateInference.state,
+      stateLabel: stateInference.state,
+      confidence: stateInference.confidence,
+      reasoning: stateInference.reasoning,
+      observableFactors: stateInference.observableFactors,
+      stateTimeline: consistency.rollingWindows.map((rw) => ({
+        timestamp: rw.timestamp,
+        state: rw.state,
+        trigger: rw.keyFactor,
+        questionPosition: rw.windowIndex,
+      })),
+    };
+
+    session.temporalPersistence = evaluateTemporalPersistence(session.interactions, integrityEvents);
+    session.examEventTimeline = buildExamEventTimeline(sequenceEvents, integrityEvents, session.interactions);
   }
 
   inMemoryExamSessions.set(sessionId, session);

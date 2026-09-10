@@ -156,9 +156,38 @@ export async function getCurrentProfileClient() {
         created_at: profile.created_at,
       };
     }
-
-    return null;
   } catch (err) {
-    return null;
+    console.warn('[auth] getCurrentProfileClient error:', err);
+  }
+
+  return {
+    id: user.id,
+    student_id: user.id,
+    student_identifier: 'S001',
+    email: user.email || '',
+    full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+    role: (user.user_metadata?.role as any) || 'student',
+    created_at: user.created_at || new Date().toISOString(),
+  };
+}
+
+// Client-side sign out
+export async function signOutUserClient(redirectUrl: string = '/login'): Promise<void> {
+  try {
+    const supabase = createBrowserClient();
+    await supabase.auth.signOut();
+  } catch (err) {
+    console.warn('[auth] Supabase signOut error:', err);
+  }
+
+  // Clear client-side session cookies
+  if (typeof document !== 'undefined') {
+    const cookiesToClear = ['examguard_user', 'examguard_role', 'examguard_token', 'sb-access-token', 'sb-refresh-token'];
+    cookiesToClear.forEach((name) => {
+      document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+    });
+    // Redirect to login
+    window.location.href = '/login';
   }
 }
+

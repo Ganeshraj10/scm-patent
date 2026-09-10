@@ -13,7 +13,9 @@ import {
   Activity,
   GraduationCap,
   Briefcase,
+  LogOut,
 } from 'lucide-react';
+import { signOutUserClient } from '@/lib/services/auth';
 
 interface NavItem {
   label: string;
@@ -149,14 +151,37 @@ export function AdminSidebar({
         })}
       </nav>
 
-      {/* Footer info */}
-      <div className="p-4 border-t border-border">
-        <div className="p-3 rounded-lg bg-surface-900 border border-border/60 text-[11px] text-text-muted space-y-1">
+      {/* Footer info & Logout */}
+      <div className="p-3 border-t border-border space-y-2">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-surface-800 border border-border">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
+              <span className="text-[10px] font-bold text-amber-400">A</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-text-primary truncate">Administrator</p>
+              <p className="text-[10px] text-text-muted truncate">admin@examguard.io</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await signOutUserClient();
+            }}
+            className="p-1.5 rounded-lg text-text-muted hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+            title="Log out"
+            aria-label="Log Out"
+          >
+            <LogOut size={15} />
+          </button>
+        </div>
+
+        <div className="p-2.5 rounded-lg bg-surface-900 border border-border/60 text-[10px] text-text-muted space-y-0.5">
           <div className="flex items-center justify-between text-text-secondary font-semibold">
             <span>Prototype Dataset</span>
             <span className="text-emerald-400">120 records</span>
           </div>
-          <p className="text-[10px] text-text-muted leading-tight">
+          <p className="text-[9px] text-text-muted leading-tight">
             Role-Based Access Control Active
           </p>
         </div>
