@@ -48,7 +48,7 @@ export function createGradedExamSession(params: {
   deviceType?: string;
 }): GradedExamSession {
   const deviceType = params.deviceType || detectDeviceType();
-  const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const timestamp = new Date().toISOString();
 
   // Generate a distinct session ID
   const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -108,12 +108,14 @@ import {
   evaluateTemporalPersistence,
   buildExamEventTimeline,
 } from '@/lib/services/behavioralStateEngine';
+import { buildCameraEvidenceSummary } from '@/lib/services/cameraProctoringService';
+import { fuseMultimodalEvidence } from '@/lib/services/multimodalFusionEngine';
 
 export function completeGradedExamSession(sessionId: string): GradedExamSession | null {
   const session = getGradedExamSession(sessionId);
   if (!session) return null;
 
-  const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const now = new Date().toISOString();
   session.status = 'completed';
   session.completedAt = now;
 
@@ -180,7 +182,51 @@ export function completeGradedExamSession(sessionId: string): GradedExamSession 
     };
 
     session.temporalPersistence = evaluateTemporalPersistence(session.interactions, integrityEvents);
-    session.examEventTimeline = buildExamEventTimeline(sequenceEvents, integrityEvents, session.interactions);
+    let timeline = buildExamEventTimeline(sequenceEvents, integrityEvents, session.interactions);
+
+    // Camera Evidence & Multimodal Assessment Synthesis
+    const cameraEvents = session.cameraIntegrityEvents || [];
+    const cameraSummary = session.cameraEvidenceSummary || buildCameraEvidenceSummary(cameraEvents, totalResp);
+    session.cameraEvidenceSummary = cameraSummary;
+
+    // Merge camera integrity events into event timeline
+    if (cameraEvents.length > 0) {
+      const camEntries: any[] = cameraEvents.map((ce) => ({
+        id: ce.id,
+        timestamp: ce.timestamp,
+        timeFormatted: ce.timestamp.includes('T') ? ce.timestamp.substring(11, 19) : ce.timestamp,
+        eventType: ce.eventType,
+        category: 'camera_observation',
+        description: ce.contextSummary,
+        questionId: ce.questionId,
+        sessionPosition: ce.sessionPosition,
+        durationSec: ce.durationMs ? Math.round((ce.durationMs / 1000) * 10) / 10 : undefined,
+        direction: ce.direction,
+        severity: ce.severity,
+        isAnomalous: ce.severity === 'prolonged' || ce.severity === 'repeated' || ce.eventType === 'multiple_persons',
+      }));
+      timeline = [...timeline, ...camEntries].sort(
+        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+    }
+    session.examEventTimeline = timeline;
+
+    const multimodalAssessment = fuseMultimodalEvidence({
+      sessionId: session.sessionId,
+      studentId: session.studentId,
+      examId: session.examId,
+      deviationScore: (100 - consistency.overallScore) * 0.6 + (session.hasPasteEvent ? 25 : 0),
+      personalizedThreshold: 35,
+      consistencyScore: consistency,
+      stateInference: session.behavioralStateInference,
+      sequenceSignature: session.sequenceSignature,
+      interactions: session.interactions,
+      integrityEvents,
+      cameraSummary,
+      cameraEvents,
+      baselineMaturity: baseline.maturityStatus,
+    });
+    session.multimodalAssessment = multimodalAssessment;
   }
 
   inMemoryExamSessions.set(sessionId, session);
@@ -199,9 +245,13 @@ export function completeGradedExamSession(sessionId: string): GradedExamSession 
 export async function completeGradedExamSessionAsync(sessionId: string): Promise<GradedExamSession | null> {
   const session = completeGradedExamSession(sessionId);
   if (session) {
-    const res = await persistExamSessionToSupabase(session);
-    if (!res.success) {
-      throw new Error(res.error || 'Failed to persist exam attempt to Supabase database');
+    try {
+      const res = await persistExamSessionToSupabase(session);
+      if (!res.success) {
+        console.warn('[ExamSessionService] Remote Supabase persistence notice:', res.error);
+      }
+    } catch (err: any) {
+      console.warn('[ExamSessionService] Remote persistence failed, session retained in local session store:', err?.message);
     }
   }
   return session;

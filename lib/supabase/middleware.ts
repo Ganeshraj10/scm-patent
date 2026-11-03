@@ -38,12 +38,7 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // 1. Check Supabase authenticated user
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // 2. Check Session Role Cookie (for seamless 3-role switching and demo accounts)
+  // 1. Check Session Role Cookie (for seamless 3-role switching and demo accounts)
   const cookieRole = request.cookies.get('examguard_role')?.value;
 
   const pathname = request.nextUrl.pathname;
@@ -54,15 +49,33 @@ export async function updateSession(request: NextRequest) {
 
   // Determine effective authenticated role
   let role: string | null = cookieRole || null;
+  let user: any = null;
 
-  if (user && !role) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .maybeSingle();
+  // Only query Supabase auth if role is not already established by cookie and route is protected
+  if (!role && isProtectedRoute) {
+    try {
+      const authPromise = supabase.auth.getUser();
+      const timeoutPromise = new Promise<any>((resolve) =>
+        setTimeout(() => resolve({ data: { user: null } }), 1200)
+      );
+      const { data: authData } = await Promise.race([authPromise, timeoutPromise]);
+      user = authData?.user;
 
-    role = profile?.role || 'student';
+      if (user) {
+        const profilePromise = supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+        const profileTimeout = new Promise<any>((resolve) =>
+          setTimeout(() => resolve({ data: null }), 1000)
+        );
+        const { data: profile } = await Promise.race([profilePromise, profileTimeout]);
+        role = profile?.role || 'student';
+      }
+    } catch {
+      // Supabase unreachable or offline, proceed with role resolution
+    }
   }
 
   // If unauthenticated and trying to access protected route

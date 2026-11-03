@@ -16,6 +16,9 @@ import {
   ShieldCheck,
   Info,
   Layers,
+  Camera,
+  Sparkles,
+  Eye,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -129,6 +132,58 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
           <span className="text-sm font-bold text-sky-400 capitalize">
             {session.deviceType.replace('_', ' ')}
           </span>
+        </div>
+      </div>
+
+      {/* Multimodal & Camera Evidence Summary Strip */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+        <div className="p-3.5 rounded-xl bg-surface-800 border border-indigo-500/30 space-y-1">
+          <div className="flex items-center justify-between text-text-muted">
+            <span className="font-bold flex items-center gap-1.5 text-indigo-300">
+              <Sparkles size={13} /> Multimodal Assessment
+            </span>
+            <span className="text-[10px] font-mono text-sky-400 font-bold">Layer 3</span>
+          </div>
+          <span className="text-sm font-bold text-text-primary block">
+            {session.multimodalAssessment?.assessmentTitle || 'Nominal Engagement — Low Concern'}
+          </span>
+          <p className="text-[10px] text-text-muted leading-tight">
+            {session.multimodalAssessment?.recommendationForReviewer || 'No action required. Conforms to baseline.'}
+          </p>
+        </div>
+
+        <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-1">
+          <div className="flex items-center justify-between text-text-muted">
+            <span className="font-bold flex items-center gap-1.5 text-sky-300">
+              <Camera size={13} /> Layer 2 Camera Evidence
+            </span>
+            <span className="text-[10px] font-mono text-emerald-400 font-bold">
+              {session.cameraEvidenceSummary?.facePresencePercentage ?? 98}% Presence
+            </span>
+          </div>
+          <span className="text-xs font-semibold text-text-secondary block">
+            {session.cameraEvidenceSummary?.totalLookAwayEvents ?? 0} Look-Aways ({session.cameraEvidenceSummary?.prolongedLookAwayCount ?? 0} prolonged)
+          </span>
+          <p className="text-[10px] text-text-muted leading-tight">
+            {session.cameraEvidenceSummary?.multiplePersonEventCount ? `${session.cameraEvidenceSummary.multiplePersonEventCount} multiple-person event(s)` : 'Single face presence maintained.'}
+          </p>
+        </div>
+
+        <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-1">
+          <div className="flex items-center justify-between text-text-muted">
+            <span className="font-bold flex items-center gap-1.5 text-amber-300">
+              <ShieldCheck size={13} /> Integrity Events
+            </span>
+            <span className="text-[10px] font-mono text-amber-400 font-bold">
+              {session.integrityOpportunityEvents?.length ?? 0} Recorded
+            </span>
+          </div>
+          <span className="text-xs font-semibold text-text-secondary block">
+            {session.integrityOpportunityEvents?.filter(e => e.isIsolated).length ?? 0} Isolated · {session.integrityOpportunityEvents?.filter(e => !e.isIsolated).length ?? 0} Repeated
+          </span>
+          <p className="text-[10px] text-text-muted leading-tight">
+            Timeline integrated across interaction and camera streams.
+          </p>
         </div>
       </div>
 

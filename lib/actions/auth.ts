@@ -29,23 +29,30 @@ export async function login(formData: FormData) {
   let resolvedStudentId = localUser?.studentId || (resolvedRole === 'student' ? 'S001' : undefined);
   let resolvedStudentDbId: string | undefined = undefined;
 
-  // 1. Authenticate with Supabase Auth
+  // 1. Authenticate with Supabase Auth (with fast timeout fallback for local/demo)
   try {
-    let authRes = await supabase.auth.signInWithPassword({
+    const signInWithTimeout = (p: Promise<any>, ms = 1500) => {
+      const timeout = new Promise<any>((_, reject) =>
+        setTimeout(() => reject(new Error('Supabase auth network timeout')), ms)
+      );
+      return Promise.race([p, timeout]);
+    };
+
+    let authRes = await signInWithTimeout(supabase.auth.signInWithPassword({
       email,
       password,
-    });
+    }));
 
     // Fallback: If demo user password or credential mismatch, try standard password or auto-provision
     if (authRes.error && (email.includes('examguard') || email.includes('demo') || email.includes('student') || email.includes('instructor') || email.includes('admin'))) {
       const altPassword = password === 'demo123456' ? 'password123' : 'demo123456';
-      authRes = await supabase.auth.signInWithPassword({
+      authRes = await signInWithTimeout(supabase.auth.signInWithPassword({
         email,
         password: altPassword,
-      });
+      }));
 
       if (authRes.error) {
-        const signupRes = await supabase.auth.signUp({
+        const signupRes = await signInWithTimeout(supabase.auth.signUp({
           email,
           password: 'password123',
           options: {
@@ -54,7 +61,7 @@ export async function login(formData: FormData) {
               role: resolvedRole,
             },
           },
-        });
+        }));
         if (signupRes.data?.user) {
           authRes = { data: signupRes.data, error: null } as any;
         }
@@ -159,15 +166,15 @@ export async function login(formData: FormData) {
  * Authenticates against Supabase Auth accounts for cross-device consistency.
  */
 export async function switchRole(role: UserRole) {
-  let email = 'student1@examguard.com';
-  let password = 'password123';
+  let email = 'student_demo@examguard.io';
+  let password = 'demo123456';
 
   if (role === 'instructor') {
-    email = 'instructor@examguard.com';
-    password = 'password123';
+    email = 'instructor_demo@examguard.io';
+    password = 'demo123456';
   } else if (role === 'admin') {
-    email = 'admin@examguard.com';
-    password = 'password123';
+    email = 'admin_demo@examguard.io';
+    password = 'demo123456';
   }
 
   const formData = new FormData();

@@ -36,6 +36,8 @@ import {
   evaluateTemporalPersistence,
   buildExamEventTimeline,
 } from '@/lib/services/behavioralStateEngine';
+import { buildCameraEvidenceSummary } from '@/lib/services/cameraProctoringService';
+import { fuseMultimodalEvidence } from '@/lib/services/multimodalFusionEngine';
 import {
   BehavioralAnalysisResult,
   QuestionAnalysis,
@@ -651,6 +653,27 @@ export function analyzeSession(
     temporalPersistence,
     sequenceSignature,
     examEventTimeline,
+
+    // Layer 2 & 3: Camera Evidence & Multimodal Assessment
+    cameraEvidenceSummary: liveSession?.cameraEvidenceSummary || buildCameraEvidenceSummary([], 300),
+    cameraIntegrityEvents: liveSession?.cameraIntegrityEvents || [],
+    multimodalAssessment:
+      liveSession?.multimodalAssessment ||
+      fuseMultimodalEvidence({
+        sessionId,
+        studentId,
+        examId: sessionId,
+        deviationScore: overallScore,
+        personalizedThreshold: 35,
+        consistencyScore: consistency,
+        stateInference,
+        sequenceSignature,
+        interactions,
+        integrityEvents: liveIntegrityEvents,
+        cameraSummary: liveSession?.cameraEvidenceSummary,
+        cameraEvents: liveSession?.cameraIntegrityEvents || [],
+        baselineMaturity: baseline.maturityStatus,
+      }),
   };
 
   analysisCache.set(sessionId, result);

@@ -525,6 +525,9 @@ export interface GradedExamSession {
   behavioralStateInference?: BehavioralStateInference;
   temporalPersistence?: TemporalPersistenceResult;
   examEventTimeline?: ExamEventTimelineEntry[];
+  cameraEvidenceSummary?: CameraEvidenceSummary;
+  cameraIntegrityEvents?: CameraIntegrityEvent[];
+  multimodalAssessment?: MultimodalEvidenceAssessment;
 }
 
 // ─── Stage 8: Behavioral Deviation & Risk Analysis Engine ────────────────────
@@ -609,6 +612,11 @@ export interface BehavioralAnalysisResult {
   temporalPersistence?: TemporalPersistenceResult;
   sequenceSignature?: BehavioralSequenceSignature;
   examEventTimeline?: ExamEventTimelineEntry[];
+
+  // Layer 2 & 3: Camera Evidence & Multimodal Assessment
+  cameraEvidenceSummary?: CameraEvidenceSummary;
+  cameraIntegrityEvents?: CameraIntegrityEvent[];
+  multimodalAssessment?: MultimodalEvidenceAssessment;
 }
 
 // ─── Stage 9: Explainable Behavioral Risk Report ─────────────────────────────
@@ -704,6 +712,11 @@ export interface BehavioralRiskReport {
   temporalPersistence?: TemporalPersistenceResult;
   sequenceSignature?: BehavioralSequenceSignature;
   examEventTimeline?: ExamEventTimelineEntry[];
+
+  // Layer 2 & 3: Camera Evidence & Multimodal Assessment
+  cameraEvidenceSummary?: CameraEvidenceSummary;
+  cameraIntegrityEvents?: CameraIntegrityEvent[];
+  multimodalAssessment?: MultimodalEvidenceAssessment;
 }
 
 // ─── Stage: Real-Time Behavioral Intelligence & Sequence Signatures ──────────
@@ -830,16 +843,101 @@ export interface TemporalPersistenceResult {
   explanation: string;
 }
 
+// ─── Stage: Camera-Based Examination Evidence (Layer 2) ──────────────────────
+
+export type FacePresenceState = 'face_present' | 'face_missing' | 'detection_uncertain';
+
+export type LookAwayDirection = 'forward' | 'left' | 'right' | 'up' | 'down' | 'uncertain';
+
+export type LookAwaySeverity = 'brief' | 'prolonged' | 'repeated' | 'sustained';
+
+export type MultiplePersonState = 'single_face' | 'multiple_faces' | 'detection_uncertain';
+
+export type CameraStatusState = 'active' | 'permission_denied' | 'interrupted' | 'unavailable' | 'initializing';
+
+export type CameraEventType =
+  | 'face_present'
+  | 'face_missing'
+  | 'look_away'
+  | 'multiple_persons'
+  | 'camera_interrupted'
+  | 'camera_resumed'
+  | 'camera_permission_denied';
+
+export interface CameraIntegrityEvent {
+  id: string;
+  eventType: CameraEventType;
+  timestamp: string; // ISO string
+  durationMs?: number;
+  direction?: LookAwayDirection;
+  severity?: LookAwaySeverity;
+  questionId?: string;
+  sessionPosition?: number;
+  isIsolated: boolean;
+  occurrenceIndex: number;
+  personsCount?: number;
+  contextSummary: string;
+}
+
+export interface CameraEvidenceSummary {
+  overallCameraStatus: CameraStatusState;
+  facePresencePercentage: number; // 0–100
+  totalAbsenceDurationSec: number;
+  totalLookAwayEvents: number;
+  briefLookAwayCount: number;
+  prolongedLookAwayCount: number;
+  repeatedLookAwayCount: number;
+  multiplePersonEventCount: number;
+  cameraInterruptionCount: number;
+  lookAwayDirectionCounts: Record<LookAwayDirection, number>;
+  isCameraActive: boolean;
+}
+
+// ─── Stage: Multimodal Evidence Fusion (Layer 3) ─────────────────────────────
+
+export interface MultimodalCorrelationPattern {
+  id: string;
+  patternType:
+    | 'correlated_anomaly'
+    | 'natural_deliberation'
+    | 'technical_interruption'
+    | 'isolated_distraction'
+    | 'conforming_interaction';
+  concernLevel: 'low' | 'moderate' | 'elevated' | 'high';
+  timestamp: string;
+  questionPosition?: number;
+  behavioralSignals: string[];
+  cameraSignals: string[];
+  integritySignals: string[];
+  explanation: string;
+}
+
+export interface MultimodalEvidenceAssessment {
+  overallAssessmentLevel: 'low_concern' | 'review_recommended' | 'elevated_review_recommended' | 'technical_inconclusive';
+  assessmentTitle: string;
+  confidenceScore: number; // 0–100
+  behavioralEvidenceSummary: string;
+  cameraEvidenceSummary: string;
+  integrityOpportunitySummary: string;
+  temporalCorrelationSummary: string;
+  observedBehavioralState: BehavioralState;
+  correlationPatterns: MultimodalCorrelationPattern[];
+  recommendationForReviewer: string;
+  assessedAt: string;
+}
+
 export interface ExamEventTimelineEntry {
   id: string;
   timestamp: string;
   timeFormatted: string; // e.g. "10:02:14"
-  eventType: BehavioralEventType | IntegrityEventType;
-  category: 'interaction' | 'integrity_opportunity' | 'navigation' | 'lifecycle';
+  eventType: BehavioralEventType | IntegrityEventType | CameraEventType;
+  category: 'interaction' | 'integrity_opportunity' | 'camera_observation' | 'navigation' | 'lifecycle' | 'multimodal_correlation';
   description: string;
   questionId?: string;
   sessionPosition?: number;
   durationSec?: number;
+  direction?: LookAwayDirection;
+  severity?: LookAwaySeverity;
   isAnomalous?: boolean;
 }
 

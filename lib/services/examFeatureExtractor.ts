@@ -430,7 +430,7 @@ export function finalizeQuestionTelemetry(
 ): ExamQuestionTelemetry {
   const now = new Date();
   const timeOfDayStr = now.toTimeString().split(' ')[0]; // '14:32:00'
-  const timestampStr = now.toISOString().replace('T', ' ').substring(0, 19);
+  const timestampStr = now.toISOString();
 
   // Record submission / transition event
   recordSequenceEvent(state, 'submission', { isAnswerCorrect });

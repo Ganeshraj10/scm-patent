@@ -247,6 +247,11 @@ export function generateRiskReport(
     temporalPersistence: analysis.temporalPersistence,
     sequenceSignature: analysis.sequenceSignature,
     examEventTimeline: analysis.examEventTimeline,
+
+    // Layer 2 & 3: Camera Evidence & Multimodal Assessment
+    cameraEvidenceSummary: analysis.cameraEvidenceSummary,
+    cameraIntegrityEvents: analysis.cameraIntegrityEvents,
+    multimodalAssessment: analysis.multimodalAssessment,
   };
 
   return report;

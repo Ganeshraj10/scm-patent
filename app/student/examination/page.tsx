@@ -32,11 +32,18 @@ import {
   recordSequenceEvent,
   detectDeviceType,
 } from '@/lib/services/examFeatureExtractor';
-import { Question, GradedExamSession, IntegrityOpportunityEvent } from '@/types';
+import { Question, GradedExamSession, IntegrityOpportunityEvent, CameraIntegrityEvent, LookAwayDirection } from '@/types';
 import { MCQView } from '@/components/examination/MCQView';
 import { MultipleSelectView } from '@/components/examination/MultipleSelectView';
 import { ShortAnswerView } from '@/components/examination/ShortAnswerView';
 import { CodingEditorView } from '@/components/examination/CodingEditorView';
+import { CameraPreviewOverlay } from '@/components/examination/CameraPreviewOverlay';
+import {
+  CameraProctoringTracker,
+  analyzeVideoFrame,
+  estimateLookAwayDirection,
+  RawFaceDetection,
+} from '@/lib/services/cameraProctoringService';
 import {
   Clock,
   ChevronLeft,
@@ -44,6 +51,8 @@ import {
   ShieldCheck,
   CheckCircle2,
   AlertTriangle,
+  AlertCircle,
+  Users,
   ArrowRight,
   BookOpen,
   Code2,
@@ -51,6 +60,10 @@ import {
   FileText,
   HelpCircle,
   RefreshCw,
+  Camera,
+  Video,
+  VideoOff,
+  Eye,
 } from 'lucide-react';
 
 import { formatExamDate, formatAttendedDate } from '@/lib/formatters';
@@ -74,7 +87,25 @@ export default function ExaminationPage() {
   // Fullscreen state
   const [isFullscreenActive, setIsFullscreenActive] = useState<boolean>(false);
   const [fullscreenSupported, setFullscreenSupported] = useState<boolean>(true);
+  const [fullscreenExitCount, setFullscreenExitCount] = useState<number>(0);
   const lastFullscreenStateRef = useRef<boolean>(false);
+
+  // Camera Proctoring state
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraPermissionState, setCameraPermissionState] = useState<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt');
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [introFaceDetection, setIntroFaceDetection] = useState<RawFaceDetection | null>(null);
+  const [isCameraChecking, setIsCameraChecking] = useState<boolean>(false);
+  const [liveDetection, setLiveDetection] = useState<RawFaceDetection>({
+    faceDetected: true,
+    faceCount: 1,
+    confidence: 0.9,
+  });
+  const [liveDirection, setLiveDirection] = useState<LookAwayDirection>('forward');
+  const introVideoRef = useRef<HTMLVideoElement | null>(null);
+  const introCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cameraTrackerRef = useRef<CameraProctoringTracker>(new CameraProctoringTracker());
+  const cameraEventsRef = useRef<CameraIntegrityEvent[]>([]);
 
   // Resolve active student from Supabase Auth on mount
   useEffect(() => {
@@ -96,6 +127,81 @@ export default function ExaminationPage() {
       setFullscreenSupported(isSupported);
     }
   }, []);
+
+  // Request browser camera stream
+  const handleEnableCamera = async () => {
+    setCameraError(null);
+    setIsCameraChecking(true);
+    try {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraPermissionState('unsupported');
+        setCameraError('Camera API is not supported in this browser environment.');
+        setIsCameraChecking(false);
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 320, height: 240, facingMode: 'user' },
+        audio: false,
+      });
+
+      setCameraStream(stream);
+      setCameraPermissionState('granted');
+      setIsCameraChecking(false);
+
+      // Listen for unexpected track stops
+      stream.getVideoTracks().forEach((track) => {
+        track.onended = () => {
+          console.warn('[Camera] Video track ended / disconnected');
+          cameraTrackerRef.current.recordInterruption('Video track ended unexpectedly');
+        };
+      });
+    } catch (err: any) {
+      console.warn('[Camera] Camera access denied or failed:', err);
+      setCameraPermissionState('denied');
+      setIsCameraChecking(false);
+      setCameraError(
+        err.name === 'NotAllowedError'
+          ? 'Camera permission was denied. Please allow camera access in browser settings to begin the monitored examination.'
+          : err.message || 'Could not connect to a usable webcam device.'
+      );
+    }
+  };
+
+  // Preview face verification loop in intro phase
+  useEffect(() => {
+    if (phase !== 'intro' || !cameraStream || !introVideoRef.current || !introCanvasRef.current) return;
+
+    introVideoRef.current.srcObject = cameraStream;
+    introVideoRef.current.play().catch(() => {});
+
+    const interval = setInterval(() => {
+      if (introVideoRef.current && introCanvasRef.current) {
+        const detection = analyzeVideoFrame(introVideoRef.current, introCanvasRef.current);
+        setIntroFaceDetection(detection);
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [phase, cameraStream]);
+
+  // Clean up camera stream on unmount
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [cameraStream]);
+
+  const handleCameraEvent = (event: CameraIntegrityEvent) => {
+    const existingIdx = cameraEventsRef.current.findIndex((e) => e.id === event.id);
+    if (existingIdx >= 0) {
+      cameraEventsRef.current[existingIdx] = { ...event };
+    } else {
+      cameraEventsRef.current.push(event);
+    }
+  };
   
   // Student answer state
   const [answers, setAnswers] = useState<Record<number, any>>({});
@@ -194,6 +300,11 @@ export default function ExaminationPage() {
 
   // Start Exam Action
   const handleStartExam = async () => {
+    // If camera stream not yet initialized, request it
+    if (!cameraStream) {
+      await handleEnableCamera();
+    }
+
     const examQuestions = questions.length > 0 ? questions : validationExamQuestions;
     if (questions.length === 0) {
       setQuestions(examQuestions);
@@ -332,9 +443,12 @@ export default function ExaminationPage() {
 
       const state = telemetryMap.current[currentIndex];
       // Only record fullscreen exit event if transitioning from previously active to inactive
-      if (!isFs && lastFullscreenStateRef.current && state) {
-        const evt = recordIntegrityOpportunity(state, 'fullscreen_exit', 'Exited fullscreen mode');
-        integrityEventsRef.current.push(evt);
+      if (!isFs && lastFullscreenStateRef.current) {
+        setFullscreenExitCount((prev) => prev + 1);
+        if (state) {
+          const evt = recordIntegrityOpportunity(state, 'fullscreen_exit', 'Exited fullscreen mode');
+          integrityEventsRef.current.push(evt);
+        }
       }
       lastFullscreenStateRef.current = isFs;
     };
@@ -433,10 +547,22 @@ export default function ExaminationPage() {
       if (integrityEventsRef.current.length > 0) {
         session.integrityOpportunityEvents = [...integrityEventsRef.current];
       }
+
+      // Attach camera events and summarize camera evidence
+      const examElapsedSec = Math.max(1, EXAM_DURATION_SECONDS - timeLeft);
+      session.cameraIntegrityEvents = [...cameraEventsRef.current];
+      session.cameraEvidenceSummary = cameraTrackerRef.current.summarize(examElapsedSec);
+
       const updated = await completeGradedExamSessionAsync(session.sessionId);
       if (updated) {
         setSession({ ...updated });
       }
+
+      // Clean up camera stream
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((t) => t.stop());
+      }
+
       setPhase('completed');
     } catch (err: any) {
       console.error('[ExaminationPage] Exam submission persistence failed:', err);
@@ -550,8 +676,9 @@ export default function ExaminationPage() {
               </div>
             </div>
 
-            {/* Fullscreen Requirement & Privacy Notice */}
+            {/* Camera Proctoring & Fullscreen Verification Notice */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Fullscreen Requirement Card */}
               <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2">
                 <div className="flex items-center gap-2 text-indigo-300 font-bold text-xs">
                   <ShieldCheck size={16} className="text-sky-400 shrink-0" />
@@ -567,24 +694,69 @@ export default function ExaminationPage() {
                 </div>
               </div>
 
-              <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2">
-                <div className="flex items-center gap-2 text-indigo-300 font-bold text-xs">
-                  <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                  <span>Privacy Guarantees</span>
+              {/* Camera Proctoring & Verification Card */}
+              <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 space-y-2.5">
+                <div className="flex items-center justify-between gap-2 text-indigo-300 font-bold text-xs">
+                  <div className="flex items-center gap-2">
+                    <Camera size={16} className="text-emerald-400 shrink-0" />
+                    <span>Camera Proctoring Layer</span>
+                  </div>
+                  {cameraStream && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                      <CheckCircle2 size={10} /> Active
+                    </span>
+                  )}
                 </div>
+
                 <p className="text-[11px] text-text-muted leading-relaxed">
-                  ExamGuard analyzes non-invasive behavioral pacing metrics (response time, code revision cadence, and scrolling).
+                  Layer 2 optical monitoring tracks face presence and estimated head orientation locally. <strong>No raw continuous video is stored or uploaded.</strong>
                 </p>
-                <div className="p-2.5 rounded-lg bg-surface-900/80 border border-border/80 text-[10px] text-emerald-400/90 font-medium">
-                  Zero video, webcam, microphone, or raw keystroke recording.
-                </div>
+
+                {/* Interactive Stream Check */}
+                {!cameraStream ? (
+                  <div className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleEnableCamera}
+                      disabled={isCameraChecking}
+                      className="w-full text-xs font-semibold gap-1.5"
+                    >
+                      <Video size={13} />
+                      {isCameraChecking ? 'Connecting Camera...' : 'Enable Camera & Verify Stream'}
+                    </Button>
+                    {cameraError && (
+                      <p className="text-[10px] text-rose-400 font-medium leading-tight">{cameraError}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 p-2 rounded-xl bg-surface-900/80 border border-border/80">
+                    <video
+                      ref={introVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-20 h-14 object-cover rounded-lg bg-black border border-indigo-500/40 transform -scale-x-100"
+                    />
+                    <canvas ref={introCanvasRef} className="hidden" />
+                    <div className="space-y-1 text-xs">
+                      <span className="font-bold text-emerald-400 block text-[11px]">
+                        {introFaceDetection?.faceDetected ? 'Face Detected & Ready' : 'Position Face in Center'}
+                      </span>
+                      <span className="text-[10px] text-text-muted block">
+                        Real-time presence active · Ready to begin
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Start Button */}
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border/60">
               <span className="text-[11px] text-text-muted">
-                Clicking Start will launch fullscreen mode and begin the 25-minute timer.
+                Clicking Start will launch fullscreen mode and start the monitored 25-minute examination.
               </span>
               <Button
                 variant="primary"
@@ -603,6 +775,97 @@ export default function ExaminationPage() {
       {/* ─── PHASE 2: ACTIVE EXAMINATION ─── */}
       {phase === 'active' && currentQ && (
         <div className="space-y-5">
+          {/* Floating Camera Proctoring Preview */}
+          <CameraPreviewOverlay
+            stream={cameraStream}
+            tracker={cameraTrackerRef.current}
+            onEventGenerated={handleCameraEvent}
+            onDetectionUpdate={(det, dir) => {
+              setLiveDetection(det);
+              setLiveDirection(dir);
+            }}
+            isExamActive={phase === 'active'}
+            questionContext={{ id: currentQ.id, position: currentIndex + 1 }}
+          />
+
+          {/* Real-Time Live Proctoring & Fullscreen Alert Banners */}
+          <div className="space-y-2">
+            {/* 1. Fullscreen Exit Alert Banner */}
+            {!isFullscreenActive && (
+              <div className="p-3 rounded-xl bg-amber-500/15 border-2 border-amber-500/50 backdrop-blur-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg animate-pulse">
+                <div className="flex items-center gap-2.5">
+                  <AlertTriangle className="text-amber-400 shrink-0" size={18} />
+                  <div>
+                    <span className="font-bold text-amber-200 text-xs block">
+                      Fullscreen Mode Inactive {fullscreenExitCount > 0 && `(Exited: ${fullscreenExitCount}x)`}
+                    </span>
+                    <p className="text-[11px] text-amber-300/80">
+                      Exiting full-screen is recorded in the integrity audit log. Please re-enter full-screen mode to comply with proctoring standards.
+                    </p>
+                  </div>
+                </div>
+                {fullscreenSupported && (
+                  <button
+                    type="button"
+                    onClick={handleRequestFullscreen}
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-400 text-surface-950 transition-colors shrink-0 shadow-md cursor-pointer flex items-center gap-1.5"
+                  >
+                    <ShieldCheck size={13} />
+                    Re-enter Fullscreen
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* 2. Multiple Faces Security Warning */}
+            {cameraStream && liveDetection.faceCount > 1 && (
+              <div className="p-3 rounded-xl bg-rose-500/20 border-2 border-rose-500/60 backdrop-blur-md flex items-center gap-3 shadow-xl animate-bounce">
+                <Users className="text-rose-400 shrink-0" size={20} />
+                <div className="space-y-0.5">
+                  <span className="font-bold text-rose-200 text-xs flex items-center gap-1.5">
+                    Security Warning: Multiple People Detected in Camera Feed
+                  </span>
+                  <p className="text-[11px] text-rose-300/90">
+                    {liveDetection.faceCount} distinct faces are currently detected in your camera view. The examination must be completed individually without external assistance.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 3. No Face in View Warning */}
+            {cameraStream && !liveDetection.faceDetected && (
+              <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 backdrop-blur-md flex items-center gap-2.5 shadow-md">
+                <AlertCircle className="text-amber-400 shrink-0" size={18} />
+                <div className="space-y-0.5">
+                  <span className="font-bold text-amber-200 text-xs">
+                    Camera Notice: No Face Detected in Frame
+                  </span>
+                  <p className="text-[11px] text-amber-300/80">
+                    Please ensure your face is fully visible within the camera view. Continuous camera presence is required.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 4. Look-Away Attention Notice */}
+            {cameraStream &&
+              liveDetection.faceDetected &&
+              liveDirection !== 'forward' &&
+              liveDirection !== 'uncertain' && (
+                <div className="p-2.5 rounded-xl bg-sky-500/15 border border-sky-500/40 backdrop-blur-md flex items-center gap-2.5 shadow-md">
+                  <Eye className="text-sky-400 shrink-0" size={18} />
+                  <div className="space-y-0.5">
+                    <span className="font-bold text-sky-200 text-xs">
+                      Attention Notice: Gaze Diverted (Looking {liveDirection.toUpperCase()})
+                    </span>
+                    <p className="text-[11px] text-sky-300/80">
+                      Please keep your attention focused forward onto your examination screen.
+                    </p>
+                  </div>
+                </div>
+              )}
+          </div>
+
           {/* Top Exam Header Bar */}
           <Card padding="sm" className="bg-surface-800/90 border-border">
             <div className="p-2 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
@@ -612,6 +875,19 @@ export default function ExaminationPage() {
                     Graded Validation Session
                   </span>
                   {getTypeBadge(currentQ.type)}
+
+                  {/* Camera Status Indicator */}
+                  {cameraStream ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                      <Camera size={11} className="text-emerald-400" />
+                      CAMERA: Active
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                      <VideoOff size={11} className="text-amber-400" />
+                      CAMERA: Inactive
+                    </span>
+                  )}
 
                   {/* Persistent Fullscreen Status Indicator */}
                   {isFullscreenActive ? (

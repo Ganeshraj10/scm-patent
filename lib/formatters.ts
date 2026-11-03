@@ -4,13 +4,33 @@
  */
 
 /**
+ * Safely parse a date string supporting ISO 8601, SQL timestamp, or epoch strings.
+ */
+function parseSafeDate(dateStr: string | null | undefined): Date | null {
+  if (!dateStr) return null;
+  const str = String(dateStr).trim();
+  if (!str) return null;
+
+  // Handle SQL format "YYYY-MM-DD HH:mm:ss" by normalizing to ISO standard
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(str)) {
+    const normalized = str.replace(' ', 'T') + (str.endsWith('Z') ? '' : 'Z');
+    const d = new Date(normalized);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  const direct = new Date(str);
+  if (!isNaN(direct.getTime())) return direct;
+
+  return null;
+}
+
+/**
  * Format an ISO date string to a human-readable date.
  */
 export function formatDate(isoString: string | null | undefined): string {
-  if (!isoString) return '—';
+  const date = parseSafeDate(isoString);
+  if (!date) return '—';
   try {
-    const date = new Date(isoString);
-    if (isNaN(date.getTime())) return '—';
     return date.toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -25,10 +45,9 @@ export function formatDate(isoString: string | null | undefined): string {
  * Format an ISO date string to date + time (e.g. "10 Sep 2026, 10:32 AM").
  */
 export function formatDateTime(isoString: string | null | undefined): string {
-  if (!isoString) return '—';
+  const date = parseSafeDate(isoString);
+  if (!date) return '—';
   try {
-    const date = new Date(isoString);
-    if (isNaN(date.getTime())) return '—';
     return date.toLocaleDateString('en-GB', {
       day: 'numeric',
       month: 'short',

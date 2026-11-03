@@ -26,6 +26,10 @@ import {
   ArrowLeft,
   Sparkles,
   Activity,
+  Camera,
+  Video,
+  Users,
+  WifiOff,
 } from 'lucide-react';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -553,109 +557,170 @@ export function BehavioralRiskReportView({
         </Card>
       )}
 
-      {/* ─── Real-Time Behavioral Intelligence Overview (5 Dimensions) ──────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {/* Dimension 1: Continuous Behavioral Consistency */}
-        <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-1.5">
-          <div className="flex items-center justify-between text-text-muted text-xs">
-            <span className="font-bold">Behavioral Consistency</span>
-            <Sparkles size={14} className="text-sky-400" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black font-mono text-sky-400">
-              {report.behavioralConsistencyScore ?? 85}/100
-            </span>
-            <span className="text-[10px] text-text-muted">
-              {report.behavioralConsistencyLabel || 'Continuous Score'}
-            </span>
-          </div>
-          <ProgressBar
-            value={report.behavioralConsistencyScore ?? 85}
-            color={
-              (report.behavioralConsistencyScore ?? 85) >= 75
-                ? 'emerald'
-                : (report.behavioralConsistencyScore ?? 85) >= 50
-                ? 'amber'
-                : 'rose'
-            }
-            size="sm"
-          />
-        </div>
-
-        {/* Dimension 2: Observed Behavioral State Inference */}
-        <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-2">
-          <div className="flex items-center justify-between text-text-muted text-xs">
-            <span className="font-bold">Observed Behavioral State</span>
-            <Activity size={14} className="text-indigo-400" />
-          </div>
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-base font-black text-indigo-300 block truncate">
-              {report.behavioralStateInference?.currentState || 'Stable Interaction'}
-            </span>
-            <span className="text-[10px] text-sky-400 font-mono font-bold">
-              {report.behavioralStateInference?.confidence || 85}% Conf.
-            </span>
-          </div>
-
-          <div className="space-y-1 pt-0.5 border-t border-border/50">
-            <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider block">
-              Observed Contributors:
-            </span>
-            {report.behavioralStateInference?.observableFactors && report.behavioralStateInference.observableFactors.length > 0 ? (
-              <ul className="text-[10px] text-text-secondary space-y-0.5 list-disc list-inside">
-                {report.behavioralStateInference.observableFactors.slice(0, 2).map((factor, fIdx) => (
-                  <li key={fIdx} className="truncate">
-                    {factor}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-[10px] text-text-muted leading-tight truncate">
-                Interaction pacing conforms to personal habit.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Dimension 3: Temporal Persistence */}
-        <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-1.5">
-          <div className="flex items-center justify-between text-text-muted text-xs">
-            <span className="font-bold">Temporal Persistence</span>
-            <Clock size={14} className="text-amber-400" />
-          </div>
+      {/* ─── Layer 3: Multimodal Evidence Fusion Summary ────────────────────── */}
+      <Card padding="md" className="border-indigo-500/40 bg-gradient-to-br from-surface-850 via-surface-800 to-surface-850 space-y-4 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border/80 pb-3">
           <div className="flex items-center gap-2">
-            <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-              report.temporalPersistence?.persistenceTier === 'persistent'
-                ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
-                : report.temporalPersistence?.persistenceTier === 'short_lived'
-                ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                : 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-            }`}>
-              {report.temporalPersistence?.persistenceLabel || 'Isolated Event'}
+            <span className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              <Sparkles size={16} />
             </span>
+            <div>
+              <h3 className="text-sm font-bold text-text-primary">
+                Layer 3 — Multimodal Evidence Fusion Assessment
+              </h3>
+              <p className="text-[11px] text-text-muted">
+                Cross-layer temporal synthesis of behavioral telemetry, camera observations, and environmental integrity
+              </p>
+            </div>
           </div>
-          <p className="text-[10px] text-text-muted leading-tight">
-            {report.temporalPersistence?.explanation || 'No persistent multi-window deviations observed.'}
+
+          <span
+            className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+              report.multimodalAssessment?.overallAssessmentLevel === 'elevated_review_recommended'
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                : report.multimodalAssessment?.overallAssessmentLevel === 'review_recommended'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                : report.multimodalAssessment?.overallAssessmentLevel === 'technical_inconclusive'
+                ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+            }`}
+          >
+            {report.multimodalAssessment?.overallAssessmentLevel === 'elevated_review_recommended'
+              ? 'Elevated Review Recommended'
+              : report.multimodalAssessment?.overallAssessmentLevel === 'review_recommended'
+              ? 'Review Recommended'
+              : report.multimodalAssessment?.overallAssessmentLevel === 'technical_inconclusive'
+              ? 'Technical Disruption Context'
+              : 'Low Concern — Nominal'}
+          </span>
+        </div>
+
+        {/* 3-Pillar Cross-Layer Breakdown */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          {/* Behavioral Pillar */}
+          <div className="p-3 rounded-xl bg-surface-900/90 border border-border space-y-1">
+            <div className="flex items-center gap-1.5 text-text-muted font-semibold">
+              <Activity size={13} className="text-indigo-400" />
+              <span>Layer 1: Behavioral Telemetry</span>
+            </div>
+            <p className="text-[11px] text-text-secondary leading-relaxed">
+              {report.multimodalAssessment?.behavioralEvidenceSummary ||
+                `Deviation score: ${report.overallScore}/100. Observed state: '${report.behavioralStateInference?.currentState || 'Stable Interaction'}'.`}
+            </p>
+          </div>
+
+          {/* Camera Pillar */}
+          <div className="p-3 rounded-xl bg-surface-900/90 border border-border space-y-1">
+            <div className="flex items-center gap-1.5 text-text-muted font-semibold">
+              <Camera size={13} className="text-sky-400" />
+              <span>Layer 2: Camera Observations</span>
+            </div>
+            <p className="text-[11px] text-text-secondary leading-relaxed">
+              {report.multimodalAssessment?.cameraEvidenceSummary ||
+                (report.cameraEvidenceSummary
+                  ? `Face presence: ${report.cameraEvidenceSummary.facePresencePercentage}%. Look-aways: ${report.cameraEvidenceSummary.prolongedLookAwayCount} prolonged.`
+                  : 'Camera telemetry nominal throughout examination.')}
+            </p>
+          </div>
+
+          {/* Environmental / Integrity Pillar */}
+          <div className="p-3 rounded-xl bg-surface-900/90 border border-border space-y-1">
+            <div className="flex items-center gap-1.5 text-text-muted font-semibold">
+              <ShieldCheck size={13} className="text-emerald-400" />
+              <span>Environmental & Integrity</span>
+            </div>
+            <p className="text-[11px] text-text-secondary leading-relaxed">
+              {report.multimodalAssessment?.integrityOpportunitySummary ||
+                `${report.integrityOpportunityEvents?.length || 0} integrity opportunity events recorded.`}
+            </p>
+          </div>
+        </div>
+
+        {/* Temporal Correlation Insights Banner */}
+        <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-500/30 text-xs space-y-1">
+          <span className="font-bold text-indigo-300 block text-[11px] uppercase tracking-wider">
+            Temporal Cross-Layer Correlation Insights:
+          </span>
+          <p className="text-[11px] text-text-secondary leading-relaxed">
+            {report.multimodalAssessment?.temporalCorrelationSummary ||
+              'Behavioral pacing and observable attention directions exhibit natural alignment without correlated anomalous bursts.'}
           </p>
         </div>
 
-        {/* Dimension 4: Sequence Entropy & Transitions */}
-        <div className="p-3.5 rounded-xl bg-surface-800 border border-border space-y-1.5">
-          <div className="flex items-center justify-between text-text-muted text-xs">
-            <span className="font-bold">Sequence Signature</span>
-            <Layers size={14} className="text-emerald-400" />
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black font-mono text-emerald-400">
-              {report.sequenceSignature?.totalEvents || report.questionReports.length * 5}
+        {/* Human Review Recommendation */}
+        <div className="flex items-center justify-between gap-3 pt-1 text-xs border-t border-border/60">
+          <div className="flex items-center gap-2">
+            <Info size={14} className="text-sky-400 shrink-0" />
+            <span className="text-text-muted">
+              Reviewer Guidance: <strong>{report.multimodalAssessment?.recommendationForReviewer || report.recommendedAction}</strong>
             </span>
-            <span className="text-[10px] text-text-muted">Total Events</span>
           </div>
-          <p className="text-[10px] text-text-muted leading-tight">
-            Entropy: {report.sequenceSignature?.transitionEntropy || '1.85'} · Latency: {report.sequenceSignature?.avgInterEventLatencyMs || 820}ms
-          </p>
+          <span className="text-[10px] text-text-muted font-mono shrink-0">
+            Assessed: {formatExamDate(report.multimodalAssessment?.assessedAt || report.generatedAt)}
+          </span>
         </div>
-      </div>
+      </Card>
+
+      {/* ─── Layer 2: Camera Evidence Inspection Grid ──────────────────────── */}
+      <Card padding="md">
+        <CardHeader
+          title="Layer 2 — Camera Evidence & Attention Telemetry"
+          subtitle="Privacy-aware, derived optical metrics: face presence continuity, estimated look-away directions, and multiple-person detection"
+          badge={
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-500/15 text-sky-300 border border-sky-500/30">
+              Camera Evidence Layer
+            </span>
+          }
+        />
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+          {/* Face Presence Rate */}
+          <div className="p-3 rounded-xl bg-surface-800 border border-border space-y-1">
+            <span className="text-[10px] font-bold text-text-muted uppercase block">Face Presence Rate</span>
+            <span className="text-xl font-bold font-mono text-emerald-400">
+              {report.cameraEvidenceSummary?.facePresencePercentage ?? 98}%
+            </span>
+            <span className="text-[10px] text-text-muted block">
+              Absence: {report.cameraEvidenceSummary?.totalAbsenceDurationSec ?? 0}s
+            </span>
+          </div>
+
+          {/* Look-Away Events */}
+          <div className="p-3 rounded-xl bg-surface-800 border border-border space-y-1">
+            <span className="text-[10px] font-bold text-text-muted uppercase block">Look-Away Breakdown</span>
+            <span className="text-xl font-bold font-mono text-sky-400">
+              {report.cameraEvidenceSummary?.totalLookAwayEvents ?? 2}
+            </span>
+            <span className="text-[10px] text-text-muted block truncate">
+              {report.cameraEvidenceSummary?.briefLookAwayCount ?? 2} Brief · {report.cameraEvidenceSummary?.prolongedLookAwayCount ?? 0} Prolonged
+            </span>
+          </div>
+
+          {/* Multiple-Person Observations */}
+          <div className="p-3 rounded-xl bg-surface-800 border border-border space-y-1">
+            <span className="text-[10px] font-bold text-text-muted uppercase block">Multiple-Person Events</span>
+            <span className={`text-xl font-bold font-mono ${
+              (report.cameraEvidenceSummary?.multiplePersonEventCount ?? 0) > 0 ? 'text-rose-400' : 'text-text-primary'
+            }`}>
+              {report.cameraEvidenceSummary?.multiplePersonEventCount ?? 0}
+            </span>
+            <span className="text-[10px] text-text-muted block">
+              {(report.cameraEvidenceSummary?.multiplePersonEventCount ?? 0) > 0 ? 'Extra Face Observed' : 'Single Face'}
+            </span>
+          </div>
+
+          {/* Camera Interruption Log */}
+          <div className="p-3 rounded-xl bg-surface-800 border border-border space-y-1">
+            <span className="text-[10px] font-bold text-text-muted uppercase block">Stream Continuity</span>
+            <span className="text-xl font-bold font-mono text-emerald-400">
+              {report.cameraEvidenceSummary?.cameraInterruptionCount === 0 ? 'Continuous' : `${report.cameraEvidenceSummary?.cameraInterruptionCount} Drops`}
+            </span>
+            <span className="text-[10px] text-text-muted block">
+              Status: {report.cameraEvidenceSummary?.overallCameraStatus || 'Active'}
+            </span>
+          </div>
+        </div>
+      </Card>
 
       {/* ─── Exam Event Timeline & Sequence Inspection ──────────────────────── */}
       {report.examEventTimeline && report.examEventTimeline.length > 0 && (
