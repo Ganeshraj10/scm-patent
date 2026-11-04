@@ -38,6 +38,32 @@ export interface FusionInput {
   cameraSummary?: CameraEvidenceSummary;
   cameraEvents?: CameraIntegrityEvent[];
   baselineMaturity?: string;
+  temporalDeltaMs?: number;
+}
+
+/**
+ * Evaluates temporal correlation between two timestamped event streams within a configurable difference window Delta (in ms).
+ * Default window is 5000ms (5.0 seconds).
+ */
+export function matchTemporalEventWindow<T extends { timestamp: string }, U extends { timestamp: string }>(
+  streamA: T[],
+  streamB: U[],
+  deltaMs: number = 5000
+): { eventA: T; eventB: U; deltaSec: number }[] {
+  const matches: { eventA: T; eventB: U; deltaSec: number }[] = [];
+  for (const a of streamA) {
+    const tA = new Date(a.timestamp).getTime();
+    if (isNaN(tA)) continue;
+    for (const b of streamB) {
+      const tB = new Date(b.timestamp).getTime();
+      if (isNaN(tB)) continue;
+      const diffMs = Math.abs(tA - tB);
+      if (diffMs <= deltaMs) {
+        matches.push({ eventA: a, eventB: b, deltaSec: Number((diffMs / 1000).toFixed(2)) });
+      }
+    }
+  }
+  return matches;
 }
 
 /**
@@ -55,6 +81,7 @@ export function fuseMultimodalEvidence(input: FusionInput): MultimodalEvidenceAs
     cameraSummary,
     cameraEvents = [],
     baselineMaturity = 'established',
+    temporalDeltaMs = 5000,
   } = input;
 
   const patterns: MultimodalCorrelationPattern[] = [];
@@ -80,6 +107,27 @@ export function fuseMultimodalEvidence(input: FusionInput): MultimodalEvidenceAs
 
   // ─── Temporal Cross-Layer Pattern Correlation ──────────────────────────────
 
+  // Extract timestamped look-away events from camera feed
+  const lookAwayEvents = cameraEvents.filter(
+    (e) =>
+      e.eventType === 'look_away' ||
+      (e.direction && e.direction !== 'forward')
+  );
+
+  // Extract timestamped action events (paste integrity events and paste/burst interactions)
+  const actionEvents: { timestamp: string; label: string }[] = [
+    ...pasteEvents.map((e) => ({ timestamp: e.timestamp, label: 'paste_attempt' })),
+    ...interactions
+      .filter((i) => i.pasteDetected === 1 || i.characterBurstFlag === 1)
+      .map((i) => ({
+        timestamp: i.timestamp || now,
+        label: i.pasteDetected === 1 ? 'paste_detected' : 'character_burst',
+      })),
+  ];
+
+  // Evaluate explicit temporal window matching (configurable Delta, default 5000 ms)
+  const inWindowCorrelations = matchTemporalEventWindow(lookAwayEvents, actionEvents, temporalDeltaMs);
+
   // Pattern A: Technical Interruption Context
   // Camera interruption or face missing occurring with connection drop
   if (cameraInterruptions > 0 && connectionDrops.length > 0) {
@@ -97,11 +145,21 @@ export function fuseMultimodalEvidence(input: FusionInput): MultimodalEvidenceAs
   }
 
   // Pattern B: Correlated Look-Away + Action Anomaly (High / Elevated Concern)
-  // Prolonged/repeated look-away temporally correlated with paste/burst or rapid navigation
-  const hasPasteOrBurst = interactions.some((i) => i.pasteDetected === 1 || i.characterBurstFlag === 1) || pasteEvents.length > 0;
+  // Evaluates both fine-grained timestamp-window matching and session-level aggregate co-occurrence
+  const hasPasteOrBurst = actionEvents.length > 0;
   const hasLookAwayElevated = prolongedLookAways >= 2 || repeatedLookAways >= 1;
+  const hasTemporalOrAggregateCorrelation = inWindowCorrelations.length > 0 || (hasLookAwayElevated && hasPasteOrBurst);
 
-  if (hasLookAwayElevated && hasPasteOrBurst) {
+  if (hasTemporalOrAggregateCorrelation) {
+    const isExplicitTemporal = inWindowCorrelations.length > 0;
+    const minOffsetSec = isExplicitTemporal
+      ? Math.min(...inWindowCorrelations.map((c) => c.deltaSec))
+      : null;
+
+    const explanation = isExplicitTemporal
+      ? `Temporal correlation confirmed within Δ=${(temporalDeltaMs / 1000).toFixed(1)}s window: ${inWindowCorrelations.length} gaze diversion and action event pair(s) aligned (min offset: ${minOffsetSec}s).`
+      : 'Co-occurring aggregate rule-based association: session exhibits both elevated gaze diversion and external paste/burst activity across the session.';
+
     patterns.push({
       id: `pat_corr_${Date.now()}`,
       patternType: 'correlated_anomaly',
@@ -115,8 +173,7 @@ export function fuseMultimodalEvidence(input: FusionInput): MultimodalEvidenceAs
         `${prolongedLookAways} prolonged and ${repeatedLookAways} repeated look-away events recorded`,
       ],
       integritySignals: pasteEvents.length > 0 ? ['Clipboard paste integrity event'] : [],
-      explanation:
-        'Close temporal correlation observed between prolonged gaze diversion from the screen and rapid text insertion/paste actions.',
+      explanation,
     });
   }
 

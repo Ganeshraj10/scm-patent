@@ -24,7 +24,7 @@ export const FEATURE_METADATA: Record<FeatureKey, { label: string; unit: string 
   revisionCount: { label: 'Revision Count', unit: 'revisions' },
   pointerMovement: { label: 'Pointer Movement', unit: 'px' },
   scrollDistance: { label: 'Scroll Distance', unit: 'px' },
-  pasteDetected: { label: 'Paste Frequency', unit: '%' },
+  pasteDetected: { label: 'Paste-event percentage', unit: '%' },
 };
 
 export const TEMPORARY_PROTOTYPE_THRESHOLD = 2.5;
@@ -223,8 +223,9 @@ export function computeSampleCorrelation(cov: number[][], stdDevs: number[]): nu
 }
 
 /**
- * Computes the optimal Ledoit-Wolf / Schafer-Strimmer analytical shrinkage intensity lambda.
- * Targets the Identity matrix in correlation space (or diagonal in covariance space).
+ * Computes the implementation-specific shrinkage estimator intensity lambda,
+ * inspired by correlation shrinkage (with regularized small-sample fallbacks).
+ * Targets the Identity matrix in correlation space.
  */
 export function computeShrinkageIntensity(
   R: number[][],

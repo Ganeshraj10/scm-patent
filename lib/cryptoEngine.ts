@@ -1,3 +1,11 @@
+/**
+ * ExamGuard — Cryptographic Provenance Engine
+ *
+ * Provides deterministic cryptographic single-payload SHA-256 commitments for canonical examination
+ * interaction telemetry. Strictly excludes typed responses, audio, and video frames per privacy design.
+ * Operates as an authentic payload commitment for tamper detection rather than a multi-block ledger/hash-chain.
+ */
+
 import { BehavioralSession, CryptographicCommitment } from '@/types';
 
 const PAYLOAD_VERSION = 'examguard-provenance-v1';

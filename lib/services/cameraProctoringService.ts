@@ -259,7 +259,7 @@ export class CameraProctoringTracker {
           isIsolated: this.events.filter((e) => e.eventType === 'multiple_persons').length === 0,
           occurrenceIndex: this.eventIndex,
           personsCount: detection.faceCount,
-          contextSummary: `Multiple-person camera observation (${detection.faceCount} faces detected)`,
+          contextSummary: `Multiple-face indication (${detection.faceCount} faces detected in frame)`,
         };
         this.events.push(event);
         generatedEvent = event;
@@ -268,7 +268,10 @@ export class CameraProctoringTracker {
 
     // 2. Face Presence / Absence Transition
     const faceState = evaluateFacePresence(detection.faceCount, detection.confidence);
-    if (faceState === 'face_missing' && this.lastFaceState !== 'face_missing') {
+    if (faceState === 'detection_uncertain') {
+      // Low confidence detection: do NOT infer absence or presence, mark orientation uncertain
+      this.currentDirection = 'uncertain';
+    } else if (faceState === 'face_missing' && this.lastFaceState !== 'face_missing') {
       this.faceAbsenceStartTime = now;
       this.lastFaceState = 'face_missing';
 
@@ -329,7 +332,7 @@ export class CameraProctoringTracker {
             sessionPosition: questionContext?.position,
             isIsolated: recentLookAwaysInWindow === 0,
             occurrenceIndex: this.eventIndex,
-            contextSummary: `Estimated look-away (${estimatedDirection}) [brief]`,
+            contextSummary: `Approximate look-away/head-orientation indication (${estimatedDirection}) [brief]`,
           };
 
           this.activeLookAwayEvent = event;
@@ -347,7 +350,7 @@ export class CameraProctoringTracker {
           const severity = classifyLookAwaySeverity(durationSec, recentLookAwaysInWindow, this.config);
           this.activeLookAwayEvent.durationMs = durationMs;
           this.activeLookAwayEvent.severity = severity;
-          this.activeLookAwayEvent.contextSummary = `Estimated look-away (${this.currentDirection}) for ${durationSec.toFixed(1)}s [${severity}]`;
+          this.activeLookAwayEvent.contextSummary = `Approximate look-away/head-orientation indication (${this.currentDirection}) for ${durationSec.toFixed(1)}s [${severity}]`;
           generatedEvent = this.activeLookAwayEvent;
         }
       } else {
@@ -363,7 +366,7 @@ export class CameraProctoringTracker {
             const severity = classifyLookAwaySeverity(durationSec, recentLookAwaysInWindow, this.config);
             this.activeLookAwayEvent.durationMs = durationMs;
             this.activeLookAwayEvent.severity = severity;
-            this.activeLookAwayEvent.contextSummary = `Estimated look-away (${this.currentDirection}) for ${durationSec.toFixed(1)}s [${severity}]`;
+            this.activeLookAwayEvent.contextSummary = `Approximate look-away/head-orientation indication (${this.currentDirection}) for ${durationSec.toFixed(1)}s [${severity}]`;
             generatedEvent = this.activeLookAwayEvent;
             this.activeLookAwayEvent = null;
           }

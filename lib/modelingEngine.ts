@@ -29,14 +29,15 @@ function calculateStats(values: number[]): { mean: number; stdDev: number; min: 
 /**
  * Derives a personalized behavioral model from raw tracked sessions.
  * Implements an 80/20 chronological split for Phase 6 Conformal Calibration,
- * and derives the 5x5 covariance matrix with Ledoit-Wolf shrinkage regularization.
+ * and derives the 5x5 covariance matrix with an implementation-specific shrinkage estimator
+ * inspired by correlation shrinkage (with regularized small-sample fallbacks).
  */
 export function buildBehavioralModel(studentId: string, sessions: any[]): BehavioralModel {
-  // Eligibility: low_stakes sessions OR verified graded examinations
+  // Eligibility: strictly low_stakes sessions only (graded examinations are never included in baseline training, preserving fairness and privacy policy)
   const eligiblePersonalizationSessions = sessions
     .filter(
       (s) =>
-        (s.type === 'low_stakes' || s.reviewStatus === 'verified') &&
+        s.type === 'low_stakes' &&
         s.studentId === studentId &&
         s.features
     )
@@ -46,20 +47,21 @@ export function buildBehavioralModel(studentId: string, sessions: any[]): Behavi
   const sessionCount = eligiblePersonalizationSessions.length;
 
   // Chronological 80/20 train/calibration split
-  let trainingSessions = eligiblePersonalizationSessions;
+  // Strictly enforce that observations are NEVER reused for both training and calibration.
+  // Conformal calibration requires at least 10 sessions.
+  let trainingSessions: any[] = [];
   let calibrationSessions: any[] = [];
+  const calibrationAvailable = sessionCount >= 10;
 
   if (sessionCount >= 10) {
     const splitIndex = Math.floor(sessionCount * 0.8);
     trainingSessions = eligiblePersonalizationSessions.slice(0, splitIndex);
     calibrationSessions = eligiblePersonalizationSessions.slice(splitIndex);
-  } else if (sessionCount > 0) {
-    const splitIndex = Math.max(1, Math.floor(sessionCount * 0.8));
-    trainingSessions = eligiblePersonalizationSessions.slice(0, splitIndex);
-    calibrationSessions = eligiblePersonalizationSessions.slice(splitIndex);
-    if (calibrationSessions.length === 0) {
-      calibrationSessions = [...trainingSessions]; // fallback for n=1
-    }
+  } else {
+    // Insufficient history for calibration split: all eligible sessions used for training baseline only.
+    // Calibration sessions remain empty — zero overlap or data leakage.
+    trainingSessions = eligiblePersonalizationSessions;
+    calibrationSessions = [];
   }
 
   // Confidence score & model status
@@ -123,15 +125,23 @@ export function buildBehavioralModel(studentId: string, sessions: any[]): Behavi
     { feature: 'revisionCount', label: 'Revision Count', unit: 'revisions', ...calculateStats(features.revisionCount) },
     { feature: 'pointerMovement', label: 'Pointer Movement', unit: 'px', ...calculateStats(features.pointerMovement) },
     { feature: 'scrollDistance', label: 'Scroll Distance', unit: 'px', ...calculateStats(features.scrollDistance) },
-    { feature: 'pasteDetected', label: 'Paste Frequency', unit: '%', ...calculateStats(features.pasteDetected) },
+    { feature: 'pasteDetected', label: 'Paste-event percentage', unit: '%', ...calculateStats(features.pasteDetected) },
   ];
 
-  const baseUncertainty = Math.max(0.05, 1 - confidence / 100);
-  const uncertainties: FeatureUncertainty[] = expectations.map((exp) => ({
-    feature: exp.feature,
-    uncertainty: Number(Math.min(1, baseUncertainty * (1 + Math.random() * 0.2)).toFixed(3)),
-    sampleSize: trainingSessions.length,
-  }));
+  // Deterministic uncertainty calculation based on sample size and relative dispersion (stdDev / (|mean| + 1))
+  // Algorithm version: 2.1.0-deterministic (reproducible across repeated runs with zero stochastic perturbation)
+  const nTrain = trainingSessions.length;
+  const baseUncertainty = nTrain === 0 ? 1.0 : Math.max(0.05, Math.min(1.0, 1 / Math.sqrt(nTrain)));
+  const uncertainties: FeatureUncertainty[] = expectations.map((exp) => {
+    const dispersion = exp.stdDev / (Math.abs(exp.mean) + 1.0);
+    const dispersionFactor = 1.0 + Math.min(0.2, dispersion * 0.05);
+    const finalUncertainty = Math.min(1.0, Math.max(0.05, baseUncertainty * dispersionFactor));
+    return {
+      feature: exp.feature,
+      uncertainty: Number(finalUncertainty.toFixed(3)),
+      sampleSize: nTrain,
+    };
+  });
 
   // Canonical mean vector and standard deviation vector
   const meanVector = expectations.map((e) => e.mean);
@@ -158,6 +168,8 @@ export function buildBehavioralModel(studentId: string, sessions: any[]): Behavi
     minimumSessionsRequired: 10,
     confidence,
     lastUpdated: new Date().toISOString(),
+    algorithmVersion: '2.1.0-deterministic',
+    calibrationAvailable,
     expectations,
     uncertainties,
     covarianceMatrix,
@@ -167,9 +179,16 @@ export function buildBehavioralModel(studentId: string, sessions: any[]): Behavi
     featureOrder: [...ORDERED_FEATURES],
   };
 
-  // Run Conformal Calibration on held-out calibration sessions
-  const calibratedThreshold = calculateConformalThreshold(baseModel, calibrationSessions);
+  // Phase 6 Conformal Calibration:
+  // If calibration sessions are available (sessionCount >= 10), derive empirical non-conformity threshold.
+  // Otherwise, use documented cold-start fallback threshold (2.5) with no train/calibration overlap.
+  const DEFAULT_COLD_START_THRESHOLD = 2.5;
+  const calibratedThreshold = calibrationAvailable && calibrationSessions.length > 0
+    ? calculateConformalThreshold(baseModel, calibrationSessions)
+    : DEFAULT_COLD_START_THRESHOLD;
   baseModel.calibratedThreshold = calibratedThreshold;
+
+  return baseModel;
 
   return baseModel;
 }

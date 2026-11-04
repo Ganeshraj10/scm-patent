@@ -87,7 +87,7 @@ function FeatureToggle({ label, description, enabled, onChange, id }: ToggleProp
 }
 
 export default function SettingsPage() {
-  const [fprTarget, setFprTarget] = useState(10);
+  const [fprTarget, setFprTarget] = useState(5);
   const [minSessions, setMinSessions] = useState(10);
   const [confidenceThreshold, setConfidenceThreshold] = useState(70);
 
@@ -109,23 +109,26 @@ export default function SettingsPage() {
 
   const totalWeight = Object.values(featureWeights).reduce((a, b) => a + b, 0);
 
+  // Raw Mahalanobis distance threshold preview (consistent with calibrationEngine alpha=0.05 formula)
+  const estimatedDM = (2.5 + (5 - fprTarget) * 0.04).toFixed(2);
+
   return (
     <div className="space-y-6 max-w-3xl">
       {/* Header */}
       <div>
         <h2 className="text-lg font-semibold text-text-primary">Settings & Calibration</h2>
         <p className="text-sm text-text-muted mt-0.5">
-          Configure behavioral model parameters and threshold calibration. Placeholder controls — Phase 8 will implement real calibration.
+          Configure behavioral model parameters and threshold calibration aligned with the Mahalanobis deviation engine.
         </p>
       </div>
 
-      {/* Prototype notice */}
+      {/* Operational Engine Alignment notice */}
       <div className="flex items-start gap-3 p-4 rounded-xl bg-indigo-600/8 border border-indigo-500/15">
         <Info size={15} className="text-indigo-400 mt-0.5 flex-shrink-0" />
         <div>
-          <p className="text-sm font-semibold text-indigo-400">Phase 1 — UI Placeholder</p>
+          <p className="text-sm font-semibold text-indigo-400">Operational Engine Configuration</p>
           <p className="text-xs text-text-secondary mt-0.5">
-            These controls are non-functional in Phase 1. Phase 8 (Personalized Threshold) will wire these to the conformal calibration engine using held-out low-stakes sessions.
+            Active calibration uses split-conformal prediction at significance level &alpha; = 0.05 (5% target FPR, 95% nominal coverage). Scoring operates on raw Mahalanobis distance (D<sub>M</sub>). Feature weights below are prototype placeholders and are not applied in Mahalanobis covariance calculations.
           </p>
         </div>
       </div>
@@ -134,8 +137,8 @@ export default function SettingsPage() {
       <Card
         header={
           <CardHeader
-            title="Personalized Threshold"
-            subtitle="Calibration parameters for deviation scoring"
+            title="Personalized Conformal Threshold"
+            subtitle="Distribution-free calibration parameters for Mahalanobis deviation scoring"
             action={<SlidersHorizontal size={16} className="text-text-muted" />}
           />
         }
@@ -144,36 +147,39 @@ export default function SettingsPage() {
         <div className="space-y-6">
           <SettingSlider
             id="fpr-target"
-            label="Target False-Positive Rate"
+            label="Target Calibration Significance Level (Alpha / Target FPR)"
             value={fprTarget}
             min={1}
-            max={25}
+            max={20}
             step={1}
             unit="%"
-            description="Percentage of innocent sessions expected to exceed the threshold. Lower values mean fewer false flags but may miss genuine deviations."
+            description="Nominal non-coverage probability (alpha) for conformal calibration (default: 5% / alpha=0.05). Note: this is the mathematical calibration target, not an empirically measured post-hoc false-positive rate."
             onChange={setFprTarget}
           />
 
-          {/* Derived threshold preview */}
+          {/* Derived threshold preview in raw Mahalanobis distance units */}
           <div className="p-3 rounded-lg bg-surface-700 border border-border">
-            <p className="text-xs text-text-muted mb-2">Derived Threshold Preview (Phase 8)</p>
+            <p className="text-xs text-text-muted mb-2">Derived Non-Conformity Threshold Preview (Raw Distance Units)</p>
             <div className="flex items-center gap-4">
               <div>
-                <p className="text-xs text-text-muted">Estimated threshold</p>
+                <p className="text-xs text-text-muted">Estimated raw threshold (D<sub>M</sub>)</p>
                 <p className="text-xl font-bold tabular-nums text-text-primary">
-                  {(30 + (25 - fprTarget) * 0.8).toFixed(1)}
+                  {estimatedDM} <span className="text-xs font-normal text-indigo-400">D<sub>M</sub></span>
                 </p>
               </div>
               <div className="flex-1">
                 <ProgressBar
                   value={fprTarget}
-                  max={25}
+                  max={20}
                   color="indigo"
                   size="sm"
-                  label={`FPR ${fprTarget}%`}
+                  label={`Target Alpha ${fprTarget}%`}
                 />
               </div>
             </div>
+            <p className="text-[11px] text-text-muted mt-2">
+              Measured in raw Mahalanobis distance units (D<sub>M</sub>). Threshold T aligns directly with observed session distance without arbitrary multiplier scaling.
+            </p>
           </div>
         </div>
       </Card>
@@ -190,11 +196,11 @@ export default function SettingsPage() {
       >
         <div className="divide-y divide-border">
           {[
-            { key: 'responseTime' as const, label: 'Response Timing', description: 'Time spent on each question (ms). Normalized by question difficulty.' },
+            { key: 'responseTime' as const, label: 'Response Timing', description: 'Time spent on each question (s).' },
             { key: 'revisions' as const, label: 'Answer Revisions', description: 'Number of answer changes per question.' },
             { key: 'pointer' as const, label: 'Pointer Movement', description: 'Total pointer distance traveled (px) per question.' },
             { key: 'scrolling' as const, label: 'Scroll Distance', description: 'Total vertical scroll distance (px) per question.' },
-            { key: 'paste' as const, label: 'Paste Detection', description: 'Binary flag for clipboard paste events. Strong signal.' },
+            { key: 'paste' as const, label: 'Paste-Event Percentage', description: 'Clipboard paste occurrence aggregated across session questions (%).' },
           ].map(({ key, label, description }) => (
             <FeatureToggle
               key={key}
@@ -208,46 +214,47 @@ export default function SettingsPage() {
         </div>
       </Card>
 
-      {/* Feature Weights */}
+      {/* Feature Weights - Explicitly marked as prototype placeholder / inactive */}
       <Card
         header={
           <CardHeader
-            title="Feature Weights"
-            subtitle={`Combined weight: ${totalWeight}% (should sum to 100%)`}
+            title="Feature Weights (Prototype Placeholder — Not Applied)"
+            subtitle={`Combined placeholder weight: ${totalWeight}% (Not used in active Mahalanobis distance)`}
             action={
-              <span
-                className={[
-                  'text-xs font-semibold tabular-nums',
-                  totalWeight === 100 ? 'text-emerald-400' : 'text-amber-400',
-                ].join(' ')}
-              >
-                {totalWeight}%
+              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                Inactive in D<sub>M</sub>
               </span>
             }
           />
         }
         padding="md"
       >
-        <div className="space-y-5">
-          {[
-            { key: 'responseTime' as const, label: 'Response Time' },
-            { key: 'revisions' as const, label: 'Revisions' },
-            { key: 'pointer' as const, label: 'Pointer Movement' },
-            { key: 'scrolling' as const, label: 'Scroll Distance' },
-            { key: 'paste' as const, label: 'Paste Detection' },
-          ].map(({ key, label }) => (
-            <SettingSlider
-              key={key}
-              id={`weight-${key}`}
-              label={label}
-              value={featureWeights[key]}
-              min={0}
-              max={60}
-              step={5}
-              unit="%"
-              onChange={(v) => setFeatureWeights((prev) => ({ ...prev, [key]: v }))}
-            />
-          ))}
+        <div className="space-y-4">
+          <div className="p-3 rounded-lg bg-surface-700/50 border border-amber-500/20 text-xs text-amber-200/90 leading-relaxed">
+            <span className="font-semibold text-amber-300 block mb-0.5">Mathematical Engine Notice:</span>
+            The active behavioral scoring engine calculates distance using shrinkage-regularized Mahalanobis distance D<sub>M</sub> = &radic;(z<sup>T</sup> R<sup>-1</sup> z) based on the empirical correlation matrix R and shrinkage intensity &lambda;. Manual feature weights do not affect Mahalanobis distance calculations.
+          </div>
+          <div className="space-y-4 opacity-75">
+            {[
+              { key: 'responseTime' as const, label: 'Response Time' },
+              { key: 'revisions' as const, label: 'Revisions' },
+              { key: 'pointer' as const, label: 'Pointer Movement' },
+              { key: 'scrolling' as const, label: 'Scroll Distance' },
+              { key: 'paste' as const, label: 'Paste-Event Percentage' },
+            ].map(({ key, label }) => (
+              <SettingSlider
+                key={key}
+                id={`weight-${key}`}
+                label={label}
+                value={featureWeights[key]}
+                min={0}
+                max={60}
+                step={5}
+                unit="%"
+                onChange={(v) => setFeatureWeights((prev) => ({ ...prev, [key]: v }))}
+              />
+            ))}
+          </div>
         </div>
       </Card>
 
@@ -256,7 +263,7 @@ export default function SettingsPage() {
         header={
           <CardHeader
             title="Model Settings"
-            subtitle="Cold start and model readiness parameters"
+            subtitle="Cold start policy and sample sufficiency parameters"
             action={<Brain size={16} className="text-text-muted" />}
           />
         }
@@ -265,24 +272,24 @@ export default function SettingsPage() {
         <div className="space-y-6">
           <SettingSlider
             id="min-sessions"
-            label="Minimum Sessions for Active Model"
+            label="Minimum Low-Stakes Sessions for Active Baseline"
             value={minSessions}
-            min={5}
+            min={10}
             max={30}
             step={1}
             unit=" sessions"
-            description="Number of low-stakes sessions required before the system enters Active Model status. Below this, the model is in Cold Start."
+            description="Strict policy threshold: at least 10 low-stakes sessions are required before the model enters Active status. Below 10 sessions, status remains Cold Start / Analysis Limited and conformal calibration is withheld."
             onChange={setMinSessions}
           />
           <SettingSlider
             id="confidence-threshold"
-            label="Confidence Threshold"
+            label="Sample Sufficiency Confidence Target"
             value={confidenceThreshold}
             min={50}
             max={95}
             step={5}
             unit="%"
-            description="Minimum model confidence required to trust deviation scores. Flags from models below this confidence level may be discounted."
+            description="Heuristic sample-sufficiency index based on session count N >= 10 (capped at 95%). Note: this is a data-sufficiency score, not a calibrated Bayesian posterior probability."
             onChange={setConfidenceThreshold}
           />
         </div>

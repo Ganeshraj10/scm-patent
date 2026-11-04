@@ -94,8 +94,8 @@ describe('Step 4: Production Security & End-to-End Integrity Audit', () => {
     expect(serverResult.reviewRequired).toBe(true);
   });
 
-  // ── 2. Session Eligibility in Closed-Loop Model Updates ────────────────────
-  it('2. Closed loop strictly includes verified exams and strictly excludes not_verified and disputed exams', () => {
+  // ── 2. Session Eligibility in Baseline Model Updates ───────────────────────
+  it('2. Baseline eligibility strictly enforces low-stakes only policy (graded exams never enter baseline)', () => {
     const baseSessions = Array(9)
       .fill(0)
       .map((_, i) => {
@@ -105,11 +105,12 @@ describe('Step 4: Production Security & End-to-End Integrity Audit', () => {
         }, `2026-08-${day}T00:00:00Z`);
       });
 
-    // 1. With 9 sessions -> cold_start (< 10)
+    // 1. With 9 low-stakes sessions -> cold_start (< 10)
     const modelCold = buildBehavioralModel('stu-elig', baseSessions);
     expect(modelCold.status).toBe('cold_start');
+    expect(modelCold.sessionCount).toBe(9);
 
-    // 2. Add an unverified / disputed exam session -> must still be cold_start (excluded from training)
+    // 2. Add an unverified / disputed exam session -> excluded from baseline training
     const disputedSession = createMockSession(
       'exam-disputed',
       'stu-elig',
@@ -120,9 +121,9 @@ describe('Step 4: Production Security & End-to-End Integrity Audit', () => {
     );
     const modelWithDisputed = buildBehavioralModel('stu-elig', [...baseSessions, disputedSession]);
     expect(modelWithDisputed.status).toBe('cold_start');
-    expect(modelWithDisputed.sessionCount).toBe(9); // disputed session was excluded!
+    expect(modelWithDisputed.sessionCount).toBe(9); // disputed exam excluded!
 
-    // 3. Add a not_verified exam session -> must still be cold_start
+    // 3. Add a not_verified exam session -> excluded from baseline training
     const notVerifiedSession = createMockSession(
       'exam-not-verified',
       'stu-elig',
@@ -135,8 +136,8 @@ describe('Step 4: Production Security & End-to-End Integrity Audit', () => {
     expect(modelWithNotVerified.status).toBe('cold_start');
     expect(modelWithNotVerified.sessionCount).toBe(9);
 
-    // 4. Add a VERIFIED exam session -> reaches 10 eligible sessions -> status becomes active!
-    const verifiedSession = createMockSession(
+    // 4. Add a verified graded exam -> per privacy/fairness policy, graded exams NEVER enter baseline!
+    const verifiedExam = createMockSession(
       'exam-verified',
       'stu-elig',
       'graded_examination',
@@ -144,9 +145,22 @@ describe('Step 4: Production Security & End-to-End Integrity Audit', () => {
       { responseTime: 15 },
       '2026-08-12T00:00:00Z'
     );
-    const modelWithVerified = buildBehavioralModel('stu-elig', [...baseSessions, verifiedSession]);
-    expect(modelWithVerified.status).toBe('active');
-    expect(modelWithVerified.sessionCount).toBe(10);
+    const modelWithVerifiedExam = buildBehavioralModel('stu-elig', [...baseSessions, verifiedExam]);
+    expect(modelWithVerifiedExam.status).toBe('cold_start');
+    expect(modelWithVerifiedExam.sessionCount).toBe(9); // graded exam excluded even if verified
+
+    // 5. Add a 10th LOW-STAKES session -> reaches 10 eligible sessions -> status becomes active!
+    const tenthLowStakesSession = createMockSession(
+      's9',
+      'stu-elig',
+      'low_stakes',
+      'normal',
+      { responseTime: 15 },
+      '2026-08-13T00:00:00Z'
+    );
+    const modelActive = buildBehavioralModel('stu-elig', [...baseSessions, tenthLowStakesSession]);
+    expect(modelActive.status).toBe('active');
+    expect(modelActive.sessionCount).toBe(10);
   });
 
   // ── 3. Cryptographic Provenance Tamper-Proofing ─────────────────────────────

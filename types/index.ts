@@ -75,6 +75,8 @@ export interface BehavioralModel {
   expectations: FeatureExpectation[];
   uncertainties: FeatureUncertainty[];
   calibratedThreshold?: number; // Phase 6: Distribution-free conformal threshold
+  calibrationAvailable?: boolean; // false when insufficient history (< 10 sessions)
+  algorithmVersion?: string;
   covarianceMatrix?: number[][];
   correlationMatrix?: number[][];
   inverseCorrelationMatrix?: number[][];

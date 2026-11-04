@@ -109,9 +109,9 @@ export async function buildAndPersistBehavioralModel(
   const trackedSessions = await getTrackedSessionsByStudent(studentId);
   const examSessions = await getStudentSessions(studentId);
 
-  // Eligible: low_stakes or verified graded
-  const eligibleTracked = trackedSessions.filter(s => s.type === 'low_stakes' || (s.type === 'graded_examination' && s.reviewStatus === 'verified'));
-  const eligibleExams = examSessions.filter(s => s.type === 'low_stakes' || (s.type === 'graded_examination' && s.reviewStatus === 'verified'));
+  // Baseline eligibility: strictly low-stakes sessions only (preserving privacy/fairness policy)
+  const eligibleTracked = trackedSessions.filter(s => s.type === 'low_stakes');
+  const eligibleExams = examSessions.filter(s => s.type === 'low_stakes');
 
   // Combine and deduplicate
   const combined = [...eligibleTracked, ...eligibleExams];
