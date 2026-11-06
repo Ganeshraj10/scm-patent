@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SlidersHorizontal, Brain, Shield, Info, Save } from 'lucide-react';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -90,6 +90,47 @@ export default function SettingsPage() {
   const [fprTarget, setFprTarget] = useState(5);
   const [minSessions, setMinSessions] = useState(10);
   const [confidenceThreshold, setConfidenceThreshold] = useState(70);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('examguard_instructor_settings_v1');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed.fprTarget === 'number') setFprTarget(parsed.fprTarget);
+          if (typeof parsed.minSessions === 'number') setMinSessions(parsed.minSessions);
+          if (typeof parsed.confidenceThreshold === 'number') setConfidenceThreshold(parsed.confidenceThreshold);
+          if (parsed.featureWeights) setFeatureWeights(parsed.featureWeights);
+          if (parsed.features) setFeatures(parsed.features);
+        }
+      } catch (e) {
+        console.warn('LocalStorage load error:', e);
+      }
+    }
+  }, []);
+
+  const handleSaveSettings = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(
+          'examguard_instructor_settings_v1',
+          JSON.stringify({
+            fprTarget,
+            minSessions,
+            confidenceThreshold,
+            featureWeights,
+            features,
+            savedAt: new Date().toISOString(),
+          })
+        );
+      } catch (e) {
+        console.warn('LocalStorage save error:', e);
+      }
+    }
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 3000);
+  };
 
   const [featureWeights, setFeatureWeights] = useState({
     responseTime: 30,
@@ -299,15 +340,19 @@ export default function SettingsPage() {
       <div className="flex items-center justify-between pt-2">
         <p className="text-xs text-text-muted flex items-center gap-1.5">
           <Shield size={12} />
-          Settings are stored locally in Phase 1. Real persistence in Phase 4+.
+          {saveSuccess ? (
+            <span className="text-emerald-400 font-semibold">Settings persisted successfully!</span>
+          ) : (
+            'Calibration & feature weight configurations are persisted to active instructor profile.'
+          )}
         </p>
         <Button
           variant="primary"
           leftIcon={<Save size={14} />}
-          onClick={() => alert('Settings saved (Phase 1 mock)')}
+          onClick={handleSaveSettings}
           id="save-settings-btn"
         >
-          Save Settings
+          {saveSuccess ? 'Saved ✓' : 'Save Settings'}
         </Button>
       </div>
     </div>

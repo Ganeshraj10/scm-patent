@@ -361,6 +361,14 @@ export function BehavioralAnalysisWorkbench({
                   ))}
                 </div>
               )}
+              <div className="pt-2 border-t border-border/40">
+                <Link href={`/instructor/reports/${selectedSessionId}`}>
+                  <Button variant="secondary" size="sm" className="w-full text-xs flex items-center justify-center gap-1.5 border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/10">
+                    <Brain size={14} />
+                    Inspect Phase 4 XAI Telemetry & Human Review
+                  </Button>
+                </Link>
+              </div>
             </Card>
           </div>
 

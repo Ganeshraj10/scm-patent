@@ -84,12 +84,21 @@ export default function BehaviorValidationPage() {
           </p>
         </div>
 
-        <Link href="/instructor/sessions">
-          <Button variant="secondary" size="sm" className="text-xs">
-            <ArrowLeft size={13} className="mr-1.5" />
-            Back to Sessions
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          {selectedSessionId && (
+            <Link href={`/instructor/xai?session=${selectedSessionId}`}>
+              <Button size="sm" className="text-xs bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30">
+                Inspect in XAI Hub
+              </Button>
+            </Link>
+          )}
+          <Link href="/instructor/sessions">
+            <Button variant="secondary" size="sm" className="text-xs">
+              <ArrowLeft size={13} className="mr-1.5" />
+              Back to Sessions
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Purpose & Disclaimer Box */}

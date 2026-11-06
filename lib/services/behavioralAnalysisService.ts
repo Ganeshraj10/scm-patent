@@ -1,4 +1,20 @@
 /**
+ * ============================================================================
+ * EXAMGUARD — ENGINE B: SUPPLEMENTARY HEURISTIC BEHAVIOURAL ANALYSIS & EXPLAINER
+ * ============================================================================
+ * Supplementary Qualitative Interpretability & Post-Hoc Triaging Engine.
+ *
+ * Architectural Boundary:
+ * - Engine B is NOT one of the 4 competing machine-learning models.
+ * - Uses rule-based difficulty-adjusted deviations, discrete state machine
+ *   transitions (Focus, Hesitation, Rapid Response, Burst Editing),
+ *   continuous consistency tracking, and multimodal temporal fusion.
+ * - Provides human instructors with contextual explanations and timeline
+ *   reconstruction without altering statistical Mahalanobis anomaly decisions.
+ */
+export const ENGINE_TYPE = 'ENGINE_B_SUPPLEMENTARY_HEURISTIC_EXPLAINER';
+
+/**
  * ExamGuard — Personalized Behavioral Deviation & Risk Analysis Engine
  * 
  * Stage 8: Evaluates graded exam interactions against THAT SAME STUDENT'S

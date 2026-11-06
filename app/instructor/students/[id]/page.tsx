@@ -82,6 +82,21 @@ export default function StudentProfilePage({ params }: { params: Promise<{ id: s
             {student.studentId} · {student.department} · Enrolled {student.enrollmentYear}
           </p>
         </div>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <Link
+            href={`/instructor/xai?student=${studentDatasetId}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 text-xs font-semibold transition"
+          >
+            <Brain size={14} />
+            Explainable AI
+          </Link>
+          <Link
+            href={`/instructor/analysis?student=${studentDatasetId}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-700 hover:bg-surface-600 text-text-primary border border-border text-xs font-semibold transition"
+          >
+            Analysis Workbench
+          </Link>
+        </div>
       </div>
 
       {/* Demo Student Profile Switcher */}

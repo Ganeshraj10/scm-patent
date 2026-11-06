@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { verifySessionToken } from '@/lib/services/sessionAuth';
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -38,71 +39,104 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // 1. Check Session Role Cookie (for seamless 3-role switching and demo accounts)
-  const cookieRole = request.cookies.get('examguard_role')?.value;
-
   const pathname = request.nextUrl.pathname;
   const isProtectedStudentRoute = pathname.startsWith('/student');
   const isProtectedInstructorRoute = pathname.startsWith('/instructor');
   const isProtectedAdminRoute = pathname.startsWith('/admin');
   const isProtectedRoute = isProtectedStudentRoute || isProtectedInstructorRoute || isProtectedAdminRoute;
 
-  // Determine effective authenticated role
-  let role: string | null = cookieRole || null;
+  // 1. Authenticate with Supabase identity (never trust unverified client cookies for authorization)
   let user: any = null;
+  let verifiedRole: string | null = null;
 
-  // Only query Supabase auth if role is not already established by cookie and route is protected
-  if (!role && isProtectedRoute) {
-    try {
-      const authPromise = supabase.auth.getUser();
-      const timeoutPromise = new Promise<any>((resolve) =>
-        setTimeout(() => resolve({ data: { user: null } }), 1200)
+  try {
+    const authPromise = supabase.auth.getUser();
+    const timeoutPromise = new Promise<any>((resolve) =>
+      setTimeout(() => resolve({ data: { user: null }, error: new Error('Auth timeout') }), 1000)
+    );
+    const { data: authData } = await Promise.race([authPromise, timeoutPromise]);
+    user = authData?.user;
+
+    if (user) {
+      const profilePromise = supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+      const profileTimeout = new Promise<any>((resolve) =>
+        setTimeout(() => resolve({ data: null }), 1000)
       );
-      const { data: authData } = await Promise.race([authPromise, timeoutPromise]);
-      user = authData?.user;
+      const { data: profile } = await Promise.race([profilePromise, profileTimeout]);
 
-      if (user) {
-        const profilePromise = supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
-        const profileTimeout = new Promise<any>((resolve) =>
-          setTimeout(() => resolve({ data: null }), 1000)
-        );
-        const { data: profile } = await Promise.race([profilePromise, profileTimeout]);
-        role = profile?.role || 'student';
+      if (profile?.role) {
+        verifiedRole = profile.role;
+      } else {
+        // Fall back to cryptographically signed JWT claims, never unverified cookies
+        verifiedRole = user.app_metadata?.role || user.user_metadata?.role || 'student';
       }
-    } catch {
-      // Supabase unreachable or offline, proceed with role resolution
+    }
+  } catch {
+    user = null;
+  }
+
+  // 2. If Supabase session is not present or offline, verify cryptographic signed session token.
+  // The raw plaintext cookie 'examguard_role' is NEVER trusted for authorization.
+  if (!verifiedRole) {
+    const sessionCookie = request.cookies.get('examguard_session')?.value;
+    if (sessionCookie) {
+      const sessionPayload = await verifySessionToken(sessionCookie);
+      if (sessionPayload) {
+        verifiedRole = sessionPayload.role;
+        user = {
+          id: sessionPayload.userId,
+          email: sessionPayload.email,
+          role: sessionPayload.role,
+        };
+      }
     }
   }
 
-  // If unauthenticated and trying to access protected route
-  if (!user && !role && isProtectedRoute) {
+  // 3. Reject unauthenticated access to protected routes
+  if (isProtectedRoute && (!user || !verifiedRole)) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
-    return NextResponse.redirect(url);
+    url.searchParams.set('redirect', pathname);
+    const redirectResponse = NextResponse.redirect(url);
+    // Erase untrusted/forged cookies
+    redirectResponse.cookies.delete('examguard_session');
+    redirectResponse.cookies.delete('examguard_role');
+    redirectResponse.cookies.delete('examguard_user');
+    return redirectResponse;
   }
 
-  // Enforce role-based access control
-  if (role && isProtectedRoute) {
-    // Admin Routes: Only admin allowed
-    if (isProtectedAdminRoute && role !== 'admin') {
+  // 4. Overwrite client display cookie with authoritative server-verified role
+  if (verifiedRole) {
+    supabaseResponse.cookies.set('examguard_role', verifiedRole, {
+      path: '/',
+      httpOnly: false,
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7,
+    });
+  }
+
+  // 5. Enforce strict role-based access control (RBAC) on protected routes
+  if (isProtectedRoute && verifiedRole) {
+    // Admin Routes: Strictly admin only
+    if (isProtectedAdminRoute && verifiedRole !== 'admin') {
       const url = request.nextUrl.clone();
       url.pathname = '/access-denied';
       return NextResponse.redirect(url);
     }
 
-    // Instructor Routes: Only instructor and admin allowed
-    if (isProtectedInstructorRoute && role !== 'instructor' && role !== 'admin') {
+    // Instructor Routes: Instructor and Admin only
+    if (isProtectedInstructorRoute && verifiedRole !== 'instructor' && verifiedRole !== 'admin') {
       const url = request.nextUrl.clone();
       url.pathname = '/access-denied';
       return NextResponse.redirect(url);
     }
 
-    // Student Routes: Students (or admin oversight) allowed
-    if (isProtectedStudentRoute && role !== 'student' && role !== 'admin') {
+    // Student Routes: Student and Admin only
+    if (isProtectedStudentRoute && verifiedRole !== 'student' && verifiedRole !== 'admin') {
       const url = request.nextUrl.clone();
       url.pathname = '/access-denied';
       return NextResponse.redirect(url);

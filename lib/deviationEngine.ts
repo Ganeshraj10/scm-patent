@@ -6,6 +6,25 @@ import {
 } from '@/types';
 
 /**
+ * ============================================================================
+ * EXAMGUARD — ENGINE A: REGULARISED MAHALANOBIS STATISTICAL ANOMALY DETECTION
+ * ============================================================================
+ * Core Machine-Learning Anomaly Detection Benchmark (Model 1 of 4).
+ *
+ * Mathematical Specification:
+ * - D_M(x) = sqrt( (x - mu)^T * Sigma_shrunk^-1 * (x - mu) )
+ *          = sqrt( z^T * R_shrunk^-1 * z )
+ * - Shrinkage regularization: R*(lambda) = (1 - lambda) * R_sample + lambda * I
+ * - Calibration: Non-parametric split-conformal calibration on held-out low-stakes sessions (alpha = 0.05)
+ * - Dimension: p = 5 canonical standardized behavioral features
+ *
+ * NOTE: This is the primary statistical baseline model competing against
+ * Phase 2 ML algorithms (OC-SVM, Isolation Forest, Autoencoder).
+ * It is completely distinct from Engine B (Supplementary Heuristic Explainer).
+ */
+export const ENGINE_TYPE = 'ENGINE_A_REGULARIZED_MAHALANOBIS';
+
+/**
  * Canonical 5-dimensional behavioral feature vector.
  * Preserves the exact feature set defined in ExamGuard patent specifications.
  */
@@ -308,29 +327,84 @@ export function regularizeAndInvertCorrelation(
 
 /**
  * Extracts the 5-dimensional feature vector in canonical order from raw feature objects.
+ * Handles missing values by omitting unmeasured telemetry from denominators rather than
+ * treating them as genuine zero measurements. If an entire session lacks a feature,
+ * uses the baseline expectation (if provided) or zero.
  */
-export function extractAveragedFeatureVector(featuresList: any[]): Record<FeatureKey, number> {
-  const numQuestions = featuresList.length || 1;
-  let totalTime = 0;
-  let totalPointer = 0;
-  let totalScroll = 0;
-  let totalRevisions = 0;
-  let totalPaste = 0;
+export function extractAveragedFeatureVector(
+  featuresList: any[],
+  fallbackExpectations?: Record<FeatureKey, number>
+): Record<FeatureKey, number> {
+  if (!featuresList || featuresList.length === 0) {
+    return {
+      responseTime: fallbackExpectations?.responseTime ?? 0,
+      revisionCount: fallbackExpectations?.revisionCount ?? 0,
+      pointerMovement: fallbackExpectations?.pointerMovement ?? 0,
+      scrollDistance: fallbackExpectations?.scrollDistance ?? 0,
+      pasteDetected: fallbackExpectations?.pasteDetected ?? 0,
+    };
+  }
+
+  let totalTime = 0, countTime = 0;
+  let totalPointer = 0, countPointer = 0;
+  let totalScroll = 0, countScroll = 0;
+  let totalRevisions = 0, countRevisions = 0;
+  let totalPaste = 0, countPaste = 0;
 
   featuresList.forEach((f) => {
-    totalTime += f.responseTime || 0;
-    totalPointer += f.pointerMovement || 0;
-    totalScroll += f.scrollDistance || 0;
-    totalRevisions += f.revisionCount || 0;
-    totalPaste += f.pasteDetected ? 1 : 0;
+    if (f == null) return;
+
+    // 1. Response Time (seconds): Convert raw milliseconds (> 500) to seconds
+    if (f.responseTime !== undefined && f.responseTime !== null && !isNaN(Number(f.responseTime))) {
+      let t = Number(f.responseTime);
+      if (t > 500) t /= 1000;
+      if (t >= 0) {
+        totalTime += t;
+        countTime++;
+      }
+    }
+
+    // 2. Revision Count (revisions)
+    if (f.revisionCount !== undefined && f.revisionCount !== null && !isNaN(Number(f.revisionCount))) {
+      const r = Number(f.revisionCount);
+      if (r >= 0) {
+        totalRevisions += r;
+        countRevisions++;
+      }
+    }
+
+    // 3. Pointer Movement (pixels)
+    if (f.pointerMovement !== undefined && f.pointerMovement !== null && !isNaN(Number(f.pointerMovement))) {
+      const p = Number(f.pointerMovement);
+      if (p >= 0) {
+        totalPointer += p;
+        countPointer++;
+      }
+    }
+
+    // 4. Scroll Distance (pixels)
+    if (f.scrollDistance !== undefined && f.scrollDistance !== null && !isNaN(Number(f.scrollDistance))) {
+      const s = Number(f.scrollDistance);
+      if (s >= 0) {
+        totalScroll += s;
+        countScroll++;
+      }
+    }
+
+    // 5. Paste Activity (percentage of questions with paste events)
+    if (f.pasteDetected !== undefined && f.pasteDetected !== null) {
+      const isPasted = Boolean(f.pasteDetected) && f.pasteDetected !== 0;
+      if (isPasted) totalPaste++;
+      countPaste++;
+    }
   });
 
   return {
-    responseTime: totalTime / numQuestions,
-    revisionCount: totalRevisions / numQuestions,
-    pointerMovement: totalPointer / numQuestions,
-    scrollDistance: totalScroll / numQuestions,
-    pasteDetected: (totalPaste / numQuestions) * 100,
+    responseTime: countTime > 0 ? totalTime / countTime : (fallbackExpectations?.responseTime ?? 0),
+    revisionCount: countRevisions > 0 ? totalRevisions / countRevisions : (fallbackExpectations?.revisionCount ?? 0),
+    pointerMovement: countPointer > 0 ? totalPointer / countPointer : (fallbackExpectations?.pointerMovement ?? 0),
+    scrollDistance: countScroll > 0 ? totalScroll / countScroll : (fallbackExpectations?.scrollDistance ?? 0),
+    pasteDetected: countPaste > 0 ? (totalPaste / countPaste) * 100 : (fallbackExpectations?.pasteDetected ?? 0),
   };
 }
 
@@ -363,10 +437,16 @@ export function calculateMahalanobisDetails(
   });
 
   // Construct standardized residual vector z = (x - mu) / sigma
+  // Missing-value policy: If an observed feature is null, undefined, or NaN,
+  // impute the student's expected baseline mean mu_j (z_j = 0) so missing sensors
+  // do not produce false-positive anomaly spikes.
   const z: number[] = ORDERED_FEATURES.map((featureKey, idx) => {
-    const observed = observedFeatures[featureKey] ?? 0;
+    const rawObserved = observedFeatures[featureKey];
+    if (rawObserved === undefined || rawObserved === null || isNaN(rawObserved)) {
+      return 0; // z_j = (mu_j - mu_j) / sigma_j = 0
+    }
     const safeStd = Math.max(stdDevs[idx], 1e-4);
-    const zScore = (observed - means[idx]) / safeStd;
+    const zScore = (rawObserved - means[idx]) / safeStd;
     return isFinite(zScore) && !isNaN(zScore) ? zScore : 0;
   });
 

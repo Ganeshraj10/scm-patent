@@ -1,0 +1,45 @@
+{
+  "version": "2.0.0-phase2-synthetic",
+  "generatedAt": "2026-11-06T09:01:13.573Z",
+  "seed": 42,
+  "numStudents": 100,
+  "totalSessions": 4000,
+  "totalQuestions": 20005,
+  "splits": {
+    "train": {
+      "sessionCount": 2000,
+      "sessionRange": [
+        1,
+        20
+      ],
+      "sessionType": "low_stakes",
+      "anomalyCount": 0
+    },
+    "calibration": {
+      "sessionCount": 1000,
+      "sessionRange": [
+        21,
+        30
+      ],
+      "sessionType": "low_stakes",
+      "anomalyCount": 0
+    },
+    "test": {
+      "sessionCount": 1000,
+      "sessionRange": [
+        31,
+        40
+      ],
+      "sessionType": "graded_examination",
+      "anomalyCount": 182,
+      "cleanCount": 818
+    }
+  },
+  "scenarioBreakdown": {
+    "categoryA_normal": 600,
+    "categoryB_legitimate_variations": 200,
+    "categoryC_single_feature_deviations": 100,
+    "categoryD_multi_feature_deviations": 69,
+    "categoryE_data_quality_anomalies": 31
+  }
+}

@@ -1,0 +1,459 @@
+{
+  "title": "ExamGuard: Empirical Validation & Comparative Experimental Report",
+  "timestamp": "2026-11-06T11:12:09.517Z",
+  "reproducibility": {
+    "randomSeed": 42,
+    "platform": "win32",
+    "nodeVersion": "v24.19.0",
+    "cohortSize": 100,
+    "totalSessions": 4000,
+    "features": [
+      "response_time",
+      "revision_count",
+      "pointer_movement",
+      "scroll_distance",
+      "paste_activity"
+    ],
+    "splits": {
+      "trainSessions": 2000,
+      "calibrationSessions": 1000,
+      "testSessions": 1000,
+      "cleanTest": 818,
+      "anomalousTest": 182
+    }
+  },
+  "experiments": {
+    "E1_PersonalisedBaseline": {
+      "anovaResults": {
+        "responseTime": {
+          "fStat": 109.55,
+          "pValue": 1e-16,
+          "betweenVariance": 4170.779,
+          "withinVariance": 38.07
+        },
+        "revisionCount": {
+          "fStat": 96.53,
+          "pValue": 1e-16,
+          "betweenVariance": 32.147,
+          "withinVariance": 0.333
+        },
+        "pointerMovement": {
+          "fStat": 56,
+          "pValue": 1e-16,
+          "betweenVariance": 1587482.462,
+          "withinVariance": 28348.741
+        },
+        "scrollDistance": {
+          "fStat": 250.32,
+          "pValue": 1e-16,
+          "betweenVariance": 1079838.379,
+          "withinVariance": 4313.868
+        },
+        "pasteDetected": {
+          "fStat": 0.82,
+          "pValue": 0.8944047394496741,
+          "betweenVariance": 47.877,
+          "withinVariance": 58.495
+        }
+      },
+      "sampleSizeInvestigation": {
+        "minimumMathematicalThreshold": 5,
+        "heuristicThreshold": 10,
+        "diminishingReturnsThreshold": 18,
+        "isTenSessionRuleJustified": true,
+        "statisticalRationale": "For dimension p = 5, when N < 5 the sample covariance matrix is strictly rank-deficient (singular) with condition number = infinity. At N = 6-8, matrices become invertible but exhibit severe noise sensitivity with condition numbers > 50 and optimal Ledoit-Wolf shrinkage lambda > 0.45. At N = 10-12, the condition number stabilizes to median kappa < 15, Frobenius estimation error drops by 62%, and shrinkage lambda decreases to ~0.22. Beyond N = 20, further covariance stabilization gains diminish significantly. Thus, while N = 10 is not an immutable mathematical law, it represents an empirically optimal compromise between institutional data collection burden and statistical covariance stability."
+      }
+    },
+    "E2_ComparativeModelEvaluation": {
+      "Regularised Mahalanobis Distance": {
+        "tp": 167,
+        "fp": 157,
+        "tn": 661,
+        "fn": 15,
+        "precision": 0.5154,
+        "precisionCI95": [
+          0.4612,
+          0.5694
+        ],
+        "recall": 0.9176,
+        "recallCI95": [
+          0.8685,
+          0.9494
+        ],
+        "specificity": 0.8081,
+        "fprOverall": 0.1919,
+        "fprCategoryA": 0.09,
+        "farLegitimateCategoryB": 0.475,
+        "f1Score": 0.6601,
+        "f1CI95": [
+          0.6251,
+          0.6951
+        ],
+        "aucRoc": 0.9481,
+        "aucPr": 0.7743,
+        "avgInferenceLatencyMs": 0.0057,
+        "avgInferenceLatencyMicroSec": 5.7
+      },
+      "Isolation Forest": {
+        "tp": 80,
+        "fp": 112,
+        "tn": 706,
+        "fn": 102,
+        "precision": 0.4167,
+        "precisionCI95": [
+          0.3492,
+          0.4874
+        ],
+        "recall": 0.4396,
+        "recallCI95": [
+          0.3694,
+          0.5122
+        ],
+        "specificity": 0.8631,
+        "fprOverall": 0.1369,
+        "fprCategoryA": 0.0967,
+        "farLegitimateCategoryB": 0.25,
+        "f1Score": 0.4278,
+        "f1CI95": [
+          0.3928,
+          0.4628
+        ],
+        "aucRoc": 0.7656,
+        "aucPr": 0.4477,
+        "avgInferenceLatencyMs": 0.0193,
+        "avgInferenceLatencyMicroSec": 19.3
+      },
+      "Local Outlier Factor": {
+        "tp": 159,
+        "fp": 146,
+        "tn": 672,
+        "fn": 23,
+        "precision": 0.5213,
+        "precisionCI95": [
+          0.4653,
+          0.5768
+        ],
+        "recall": 0.8736,
+        "recallCI95": [
+          0.8175,
+          0.9143
+        ],
+        "specificity": 0.8215,
+        "fprOverall": 0.1785,
+        "fprCategoryA": 0.0983,
+        "farLegitimateCategoryB": 0.41,
+        "f1Score": 0.653,
+        "f1CI95": [
+          0.618,
+          0.688
+        ],
+        "aucRoc": 0.926,
+        "aucPr": 0.7435,
+        "avgInferenceLatencyMs": 0.0089,
+        "avgInferenceLatencyMicroSec": 8.9
+      },
+      "One-Class SVM": {
+        "tp": 166,
+        "fp": 151,
+        "tn": 667,
+        "fn": 16,
+        "precision": 0.5237,
+        "precisionCI95": [
+          0.4687,
+          0.578
+        ],
+        "recall": 0.9121,
+        "recallCI95": [
+          0.862,
+          0.9452
+        ],
+        "specificity": 0.8154,
+        "fprOverall": 0.1846,
+        "fprCategoryA": 0.0817,
+        "farLegitimateCategoryB": 0.48,
+        "f1Score": 0.6653,
+        "f1CI95": [
+          0.6303,
+          0.7003
+        ],
+        "aucRoc": 0.9304,
+        "aucPr": 0.6649,
+        "avgInferenceLatencyMs": 0.0056,
+        "avgInferenceLatencyMicroSec": 5.6
+      }
+    },
+    "E3_ScenarioBasedEvaluation": {
+      "description": "Per-scenario detection rates (TPR) and false alarm rates (FAR)",
+      "breakdownByModel": {
+        "Regularised Mahalanobis Distance": {
+          "CategoryA_Normal_FPR": 0.09,
+          "CategoryB_Legitimate_FAR": 0.475,
+          "CategoryC_SingleDev_TPR": 0.93,
+          "CategoryC_byFeature": {
+            "response_time": 1,
+            "revision_count": 0.8889,
+            "pointer_movement": 0.8,
+            "scroll_distance": 1,
+            "paste_activity": 1
+          },
+          "CategoryD_MultiDev_TPR": 0.971,
+          "CategoryD_byCombination": {
+            "2_features": 0.9167,
+            "3_features": 1,
+            "simultaneous": 1
+          },
+          "CategoryE_QualityDrift_TPR": 0.4839
+        },
+        "Isolation Forest": {
+          "CategoryA_Normal_FPR": 0.0967,
+          "CategoryB_Legitimate_FAR": 0.25,
+          "CategoryC_SingleDev_TPR": 0.28,
+          "CategoryC_byFeature": {
+            "response_time": 0.0625,
+            "revision_count": 0.1667,
+            "pointer_movement": 0.44,
+            "scroll_distance": 0.2174,
+            "paste_activity": 0.4444
+          },
+          "CategoryD_MultiDev_TPR": 0.7101,
+          "CategoryD_byCombination": {
+            "2_features": 0.5833,
+            "3_features": 0.875,
+            "simultaneous": 0.7241
+          },
+          "CategoryE_QualityDrift_TPR": 0.2258
+        },
+        "Local Outlier Factor": {
+          "CategoryA_Normal_FPR": 0.0983,
+          "CategoryB_Legitimate_FAR": 0.41,
+          "CategoryC_SingleDev_TPR": 0.84,
+          "CategoryC_byFeature": {
+            "response_time": 0.9375,
+            "revision_count": 0.8889,
+            "pointer_movement": 0.48,
+            "scroll_distance": 1,
+            "paste_activity": 1
+          },
+          "CategoryD_MultiDev_TPR": 0.9855,
+          "CategoryD_byCombination": {
+            "2_features": 0.9583,
+            "3_features": 1,
+            "simultaneous": 1
+          },
+          "CategoryE_QualityDrift_TPR": 0.3871
+        },
+        "One-Class SVM": {
+          "CategoryA_Normal_FPR": 0.0817,
+          "CategoryB_Legitimate_FAR": 0.48,
+          "CategoryC_SingleDev_TPR": 0.92,
+          "CategoryC_byFeature": {
+            "response_time": 1,
+            "revision_count": 0.8889,
+            "pointer_movement": 0.8,
+            "scroll_distance": 0.9565,
+            "paste_activity": 1
+          },
+          "CategoryD_MultiDev_TPR": 0.971,
+          "CategoryD_byCombination": {
+            "2_features": 0.9583,
+            "3_features": 0.9375,
+            "simultaneous": 1
+          },
+          "CategoryE_QualityDrift_TPR": 0.4194
+        }
+      }
+    },
+    "E4_DeviationSeverity": {
+      "Regularised Mahalanobis Distance": {
+        "mild_1_5_to_2_5_sigma": 0.9333,
+        "moderate_2_5_to_4_sigma": 0.9014,
+        "severe_4_to_7_sigma": 0.9259,
+        "extreme_above_7_sigma": 0
+      },
+      "Isolation Forest": {
+        "mild_1_5_to_2_5_sigma": 0.1667,
+        "moderate_2_5_to_4_sigma": 0.4507,
+        "severe_4_to_7_sigma": 0.5309,
+        "extreme_above_7_sigma": 0
+      },
+      "Local Outlier Factor": {
+        "mild_1_5_to_2_5_sigma": 0.9,
+        "moderate_2_5_to_4_sigma": 0.831,
+        "severe_4_to_7_sigma": 0.9012,
+        "extreme_above_7_sigma": 0
+      },
+      "One-Class SVM": {
+        "mild_1_5_to_2_5_sigma": 0.9,
+        "moderate_2_5_to_4_sigma": 0.9014,
+        "severe_4_to_7_sigma": 0.9259,
+        "extreme_above_7_sigma": 0
+      }
+    },
+    "E5_LegitimateVariationFalseAlarms": {
+      "Regularised Mahalanobis Distance": {
+        "difficult_questions_far": 0.9565,
+        "fatigue_drift_far": 0.069,
+        "interruption_pause_far": 0.3529,
+        "device_tablet_far": 0.4189,
+        "overall_categoryB_far": 0.475
+      },
+      "Isolation Forest": {
+        "difficult_questions_far": 0.6739,
+        "fatigue_drift_far": 0.1034,
+        "interruption_pause_far": 0.1569,
+        "device_tablet_far": 0.1081,
+        "overall_categoryB_far": 0.25
+      },
+      "Local Outlier Factor": {
+        "difficult_questions_far": 0.913,
+        "fatigue_drift_far": 0.0345,
+        "interruption_pause_far": 0.2745,
+        "device_tablet_far": 0.3378,
+        "overall_categoryB_far": 0.41
+      },
+      "One-Class SVM": {
+        "difficult_questions_far": 0.9783,
+        "fatigue_drift_far": 0,
+        "interruption_pause_far": 0.3529,
+        "device_tablet_far": 0.4459,
+        "overall_categoryB_far": 0.48
+      }
+    },
+    "E6_ExplainabilityEvaluation": {
+      "Regularised Mahalanobis Distance": {
+        "avgFaithfulness": 0.6781,
+        "avgStability": 1,
+        "groundTruthRelevance": 1,
+        "avgExplainLatencyMs": 0.243
+      },
+      "Isolation Forest": {
+        "avgFaithfulness": 0.1426,
+        "avgStability": 0.984,
+        "groundTruthRelevance": 0.8148,
+        "avgExplainLatencyMs": 0.509
+      },
+      "Local Outlier Factor": {
+        "avgFaithfulness": 0.5707,
+        "avgStability": 1,
+        "groundTruthRelevance": 0.8519,
+        "avgExplainLatencyMs": 0.149
+      },
+      "One-Class SVM": {
+        "avgFaithfulness": 0.5797,
+        "avgStability": 1,
+        "groundTruthRelevance": 1,
+        "avgExplainLatencyMs": 0.178
+      }
+    },
+    "E7_RobustnessEvaluation": {
+      "Regularised Mahalanobis Distance": {
+        "f1Under5PctNoise": 0.651,
+        "f1Under10PctNoise": 0.6276,
+        "f1Under20PctNoise": 0.5734,
+        "f1MissingDataImputed": 0.1707
+      },
+      "Isolation Forest": {
+        "f1Under5PctNoise": 0.418,
+        "f1Under10PctNoise": 0.4171,
+        "f1Under20PctNoise": 0.4208,
+        "f1MissingDataImputed": 0.0769
+      },
+      "Local Outlier Factor": {
+        "f1Under5PctNoise": 0.6571,
+        "f1Under10PctNoise": 0.645,
+        "f1Under20PctNoise": 0.5926,
+        "f1MissingDataImputed": 0.1667
+      },
+      "One-Class SVM": {
+        "f1Under5PctNoise": 0.6535,
+        "f1Under10PctNoise": 0.6326,
+        "f1Under20PctNoise": 0.5425,
+        "f1MissingDataImputed": 0.1867
+      }
+    },
+    "E8_ComputationalPerformance": {
+      "Regularised Mahalanobis Distance": {
+        "fitTimeMsPerStudent": 0.065,
+        "calibrationTimeMs": 0.072,
+        "inferenceMicroSec": 5.7,
+        "estimatedMemoryBytes": 512
+      },
+      "Isolation Forest": {
+        "fitTimeMsPerStudent": 1.646,
+        "calibrationTimeMs": 1.766,
+        "inferenceMicroSec": 19.3,
+        "estimatedMemoryBytes": 38400
+      },
+      "Local Outlier Factor": {
+        "fitTimeMsPerStudent": 0.151,
+        "calibrationTimeMs": 0.157,
+        "inferenceMicroSec": 8.9,
+        "estimatedMemoryBytes": 3200
+      },
+      "One-Class SVM": {
+        "fitTimeMsPerStudent": 0.039,
+        "calibrationTimeMs": 0.119,
+        "inferenceMicroSec": 5.6,
+        "estimatedMemoryBytes": 6400
+      }
+    },
+    "E9_ThresholdCalibration": {
+      "Regularised Mahalanobis Distance": {
+        "alpha_0.01": {
+          "theoreticalFPR": 0.01,
+          "empiricalFPR": 0.09
+        },
+        "alpha_0.05": {
+          "theoreticalFPR": 0.05,
+          "empiricalFPR": 0.09
+        },
+        "alpha_0.1": {
+          "theoreticalFPR": 0.1,
+          "empiricalFPR": 0.09
+        }
+      },
+      "Isolation Forest": {
+        "alpha_0.01": {
+          "theoreticalFPR": 0.01,
+          "empiricalFPR": 0.0967
+        },
+        "alpha_0.05": {
+          "theoreticalFPR": 0.05,
+          "empiricalFPR": 0.0967
+        },
+        "alpha_0.1": {
+          "theoreticalFPR": 0.1,
+          "empiricalFPR": 0.0967
+        }
+      },
+      "Local Outlier Factor": {
+        "alpha_0.01": {
+          "theoreticalFPR": 0.01,
+          "empiricalFPR": 0.0983
+        },
+        "alpha_0.05": {
+          "theoreticalFPR": 0.05,
+          "empiricalFPR": 0.0983
+        },
+        "alpha_0.1": {
+          "theoreticalFPR": 0.1,
+          "empiricalFPR": 0.0983
+        }
+      },
+      "One-Class SVM": {
+        "alpha_0.01": {
+          "theoreticalFPR": 0.01,
+          "empiricalFPR": 0.0817
+        },
+        "alpha_0.05": {
+          "theoreticalFPR": 0.05,
+          "empiricalFPR": 0.0817
+        },
+        "alpha_0.1": {
+          "theoreticalFPR": 0.1,
+          "empiricalFPR": 0.0817
+        }
+      }
+    }
+  }
+}

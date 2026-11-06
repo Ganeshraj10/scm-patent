@@ -11,19 +11,27 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized: not authenticated' }, { status: 401 });
     }
 
+    // Resolve caller's verified role from profiles table (with metadata fallback)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+    const callerRole = profile?.role || user.app_metadata?.role || user.user_metadata?.role || 'student';
+
     const { searchParams } = new URL(request.url);
     const deviceType = searchParams.get('deviceType') || 'desktop';
     const queryStudentId = searchParams.get('studentId');
 
-    let targetStudentId = queryStudentId;
+    let targetStudentId: string;
 
-    if (!targetStudentId) {
-      // 2. Resolve authoritative student UUID for the current user
+    if (callerRole === 'student') {
+      // 2. Resolve authoritative student UUID for the authenticated student
       const { data: studentRow, error: studentError } = await supabase
         .from('students')
         .select('id')
         .eq('profile_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (studentError || !studentRow) {
         const isDemoMode = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
@@ -38,7 +46,52 @@ export async function GET(request: NextRequest) {
           { status: 403 }
         );
       }
+
+      // Enforce strict authorization: Students are forbidden from querying foreign student models
+      if (queryStudentId && queryStudentId !== studentRow.id) {
+        return NextResponse.json(
+          { error: 'Forbidden: Students are not permitted to access foreign student behavioral models.' },
+          { status: 403 }
+        );
+      }
       targetStudentId = studentRow.id;
+    } else if (callerRole === 'instructor') {
+      if (!queryStudentId) {
+        return NextResponse.json({ error: 'Missing required studentId parameter' }, { status: 400 });
+      }
+
+      // Verify instructor is assigned to this student
+      const { data: instructorRow } = await supabase
+        .from('instructors')
+        .select('id')
+        .eq('profile_id', user.id)
+        .maybeSingle();
+
+      if (!instructorRow) {
+        return NextResponse.json({ error: 'Instructor profile not found' }, { status: 403 });
+      }
+
+      const { data: assignment } = await supabase
+        .from('instructor_students')
+        .select('id')
+        .eq('instructor_id', instructorRow.id)
+        .eq('student_id', queryStudentId)
+        .maybeSingle();
+
+      if (!assignment) {
+        return NextResponse.json(
+          { error: 'Forbidden: Instructor is not authorized to access this student.' },
+          { status: 403 }
+        );
+      }
+      targetStudentId = queryStudentId;
+    } else if (callerRole === 'admin') {
+      if (!queryStudentId) {
+        return NextResponse.json({ error: 'Missing required studentId parameter' }, { status: 400 });
+      }
+      targetStudentId = queryStudentId;
+    } else {
+      return NextResponse.json({ error: 'Forbidden: Unrecognized role' }, { status: 403 });
     }
 
     // 3. Fetch model

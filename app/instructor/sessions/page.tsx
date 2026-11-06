@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Search, Eye, Smartphone, Laptop, Monitor, ArrowRight } from 'lucide-react';
+import { Search, Eye, Smartphone, Laptop, Monitor, ArrowRight, Brain } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -145,12 +145,20 @@ export default function SessionsPage() {
                     </div>
                   </td>
                   <td className="py-3 px-4 text-right">
-                    <Link href={`/instructor/sessions/${s.sessionId}`}>
-                      <Button variant="secondary" size="sm" className="h-7 px-2.5 text-xs">
-                        <Eye size={12} className="mr-1" />
-                        Inspect Telemetry
-                      </Button>
-                    </Link>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <Link href={`/instructor/xai?session=${s.sessionId}`}>
+                        <Button variant="primary" size="sm" className="h-7 px-2 text-xs bg-indigo-600 hover:bg-indigo-500">
+                          <Brain size={12} className="mr-1" />
+                          XAI
+                        </Button>
+                      </Link>
+                      <Link href={`/instructor/sessions/${s.sessionId}`}>
+                        <Button variant="secondary" size="sm" className="h-7 px-2 text-xs">
+                          <Eye size={12} className="mr-1" />
+                          Telemetry
+                        </Button>
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}

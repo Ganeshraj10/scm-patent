@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "jest"
+    "test": "jest",
+    "generate:dataset": "npx tsx scripts/generateSyntheticDataset.ts",
+    "benchmark:models": "npx tsx scripts/runPhase3Benchmark.ts",
+    "experiments:phase5": "npx tsx scripts/runPhase5Experiments.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.5",

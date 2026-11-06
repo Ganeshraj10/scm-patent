@@ -8,11 +8,14 @@ import {
   Clock,
   Filter,
   ChevronRight,
+  Brain,
+  ShieldCheck,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader } from '@/components/ui/Card';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { getReviewQueue } from '@/lib/services/reviews';
+import { HumanReviewService } from '@/lib/services/humanReviewService';
 import { formatDate, formatRelativeTime } from '@/lib/formatters';
 import type { ReviewStatus, AlertSeverity } from '@/types';
 import { useEffect } from 'react';
@@ -25,6 +28,26 @@ export default function AlertsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [alerts, setAlerts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const handleQuickDecision = async (sessionId: string, decision: 'cleared_normal' | 'verified_deviation') => {
+    try {
+      await HumanReviewService.submitReviewDecision(
+        sessionId,
+        'INST-PRIMARY',
+        decision,
+        `Quick decision from review queue: ${decision.replace('_', ' ')}`
+      );
+      setAlerts((prev) =>
+        prev.map((a) =>
+          a.sessionId === sessionId
+            ? { ...a, status: decision === 'verified_deviation' ? 'verified' : 'cleared' }
+            : a
+        )
+      );
+    } catch (e) {
+      console.error('[AlertsPage] Decision error:', e);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -221,25 +244,28 @@ export default function AlertsPage() {
                 {/* Right: actions */}
                 <div className="flex sm:flex-col items-center sm:items-end gap-2 flex-shrink-0">
                   <Link
-                    href={`/instructor/sessions/${reviewItem.sessionId}`}
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600/10 border border-indigo-500/25 text-xs text-indigo-400 hover:bg-indigo-600/20 transition-colors font-medium"
+                    href={`/instructor/xai?session=${reviewItem.sessionId}`}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs transition-colors font-medium shadow-sm"
                   >
-                    View Report
+                    <Brain size={13} />
+                    Inspect XAI & Review
                     <ChevronRight size={12} />
                   </Link>
                   {reviewItem.status === 'review_required' && (
-                    <div className="flex gap-2">
+                    <div className="flex gap-1.5">
                       <button
-                        className="px-2.5 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-xs text-emerald-400 hover:bg-emerald-500/20 transition-colors font-medium"
-                        onClick={() => window.alert('Phase 11: Review decision coming')}
+                        className="px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-xs text-emerald-400 hover:bg-emerald-500/20 transition-colors font-medium"
+                        onClick={() => handleQuickDecision(reviewItem.sessionId, 'cleared_normal')}
+                        title="Clear as legitimate variation"
                       >
-                        ✓ Verified
+                        ✓ Clear
                       </button>
                       <button
-                        className="px-2.5 py-2 rounded-lg bg-rose-500/10 border border-rose-500/25 text-xs text-rose-400 hover:bg-rose-500/20 transition-colors font-medium"
-                        onClick={() => window.alert('Phase 11: Review decision coming')}
+                        className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/25 text-xs text-rose-400 hover:bg-rose-500/20 transition-colors font-medium"
+                        onClick={() => handleQuickDecision(reviewItem.sessionId, 'verified_deviation')}
+                        title="Flag behavioural deviation"
                       >
-                        ✕ Not Verified
+                        ✕ Flag Deviation
                       </button>
                     </div>
                   )}

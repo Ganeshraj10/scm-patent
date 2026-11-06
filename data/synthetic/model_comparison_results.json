@@ -1,0 +1,144 @@
+{
+  "timestamp": "2026-11-06T11:07:49.578Z",
+  "datasetStats": {
+    "trainCount": 2000,
+    "calibrationCount": 1000,
+    "testCount": 1000,
+    "studentCount": 100,
+    "targetFPR": 0.05
+  },
+  "models": {
+    "Regularised Mahalanobis Distance": {
+      "summary": {
+        "modelName": "Regularised Mahalanobis Distance",
+        "modelFamily": "parametric_statistical",
+        "totalEvaluated": 1000,
+        "truePositives": 167,
+        "falsePositives": 157,
+        "trueNegatives": 661,
+        "falseNegatives": 15,
+        "tpr": 0.9176,
+        "fprOverall": 0.1919,
+        "fprCategoryA": 0.09,
+        "farLegitimateCategoryB": 0.475,
+        "precision": 0.5154,
+        "f1Score": 0.6601,
+        "aucRoc": 0.9481,
+        "avgInferenceLatencyMs": 0.0054
+      },
+      "scenarioBreakdown": {
+        "categoryA_Normal_FPR": 0.09,
+        "categoryB_Legitimate_FAR": 0.475,
+        "categoryC_SingleDev_TPR": 0.93,
+        "categoryD_MultiDev_TPR": 0.971,
+        "categoryE_QualityDrift_TPR": 0.4839
+      },
+      "featureContributionProfile": {
+        "responseTime": 1.606,
+        "revisionCount": 1.81,
+        "pointerMovement": 0.871,
+        "scrollDistance": 2.099,
+        "pasteDetected": 1.764
+      }
+    },
+    "Isolation Forest": {
+      "summary": {
+        "modelName": "Isolation Forest",
+        "modelFamily": "ensemble_isolation",
+        "totalEvaluated": 1000,
+        "truePositives": 80,
+        "falsePositives": 112,
+        "trueNegatives": 706,
+        "falseNegatives": 102,
+        "tpr": 0.4396,
+        "fprOverall": 0.1369,
+        "fprCategoryA": 0.0967,
+        "farLegitimateCategoryB": 0.25,
+        "precision": 0.4167,
+        "f1Score": 0.4278,
+        "aucRoc": 0.7656,
+        "avgInferenceLatencyMs": 0.0235
+      },
+      "scenarioBreakdown": {
+        "categoryA_Normal_FPR": 0.0967,
+        "categoryB_Legitimate_FAR": 0.25,
+        "categoryC_SingleDev_TPR": 0.28,
+        "categoryD_MultiDev_TPR": 0.7101,
+        "categoryE_QualityDrift_TPR": 0.2258
+      },
+      "featureContributionProfile": {
+        "responseTime": 1.606,
+        "revisionCount": 1.81,
+        "pointerMovement": 0.871,
+        "scrollDistance": 2.099,
+        "pasteDetected": 1.764
+      }
+    },
+    "Local Outlier Factor": {
+      "summary": {
+        "modelName": "Local Outlier Factor",
+        "modelFamily": "density_based",
+        "totalEvaluated": 1000,
+        "truePositives": 159,
+        "falsePositives": 146,
+        "trueNegatives": 672,
+        "falseNegatives": 23,
+        "tpr": 0.8736,
+        "fprOverall": 0.1785,
+        "fprCategoryA": 0.0983,
+        "farLegitimateCategoryB": 0.41,
+        "precision": 0.5213,
+        "f1Score": 0.653,
+        "aucRoc": 0.926,
+        "avgInferenceLatencyMs": 0.0106
+      },
+      "scenarioBreakdown": {
+        "categoryA_Normal_FPR": 0.0983,
+        "categoryB_Legitimate_FAR": 0.41,
+        "categoryC_SingleDev_TPR": 0.84,
+        "categoryD_MultiDev_TPR": 0.9855,
+        "categoryE_QualityDrift_TPR": 0.3871
+      },
+      "featureContributionProfile": {
+        "responseTime": 1.606,
+        "revisionCount": 1.81,
+        "pointerMovement": 0.871,
+        "scrollDistance": 2.099,
+        "pasteDetected": 1.764
+      }
+    },
+    "One-Class SVM": {
+      "summary": {
+        "modelName": "One-Class SVM",
+        "modelFamily": "support_vector_kernel",
+        "totalEvaluated": 1000,
+        "truePositives": 166,
+        "falsePositives": 151,
+        "trueNegatives": 667,
+        "falseNegatives": 16,
+        "tpr": 0.9121,
+        "fprOverall": 0.1846,
+        "fprCategoryA": 0.0817,
+        "farLegitimateCategoryB": 0.48,
+        "precision": 0.5237,
+        "f1Score": 0.6653,
+        "aucRoc": 0.9304,
+        "avgInferenceLatencyMs": 0.0072
+      },
+      "scenarioBreakdown": {
+        "categoryA_Normal_FPR": 0.0817,
+        "categoryB_Legitimate_FAR": 0.48,
+        "categoryC_SingleDev_TPR": 0.92,
+        "categoryD_MultiDev_TPR": 0.971,
+        "categoryE_QualityDrift_TPR": 0.4194
+      },
+      "featureContributionProfile": {
+        "responseTime": 1.606,
+        "revisionCount": 1.81,
+        "pointerMovement": 0.871,
+        "scrollDistance": 2.099,
+        "pasteDetected": 1.764
+      }
+    }
+  }
+}

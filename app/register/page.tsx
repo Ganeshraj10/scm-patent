@@ -125,7 +125,6 @@ export default function RegisterPage() {
               >
                 <option value="student">Student / Test-Taker</option>
                 <option value="instructor">Instructor / Human Reviewer</option>
-                <option value="admin">Platform Administrator</option>
               </select>
             </div>
 

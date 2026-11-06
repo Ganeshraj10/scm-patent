@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import {
   FileText,
   ShieldCheck,
@@ -10,6 +11,7 @@ import {
   Printer,
   ChevronRight,
   Filter,
+  Brain,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -147,6 +149,15 @@ function ReportsContent() {
           <div className="flex items-center gap-2">
             <span className="text-text-muted">Student Scope:</span>
             <strong className="text-sky-400 font-mono">{selectedStudentId}</strong>
+            {selectedSessionId && (
+              <Link
+                href={`/instructor/xai?session=${selectedSessionId}`}
+                className="ml-2 inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 rounded-lg text-xs font-semibold transition"
+              >
+                <Brain className="w-3.5 h-3.5 text-indigo-400" />
+                Inspect in XAI Hub
+              </Link>
+            )}
           </div>
         </div>
       </Card>

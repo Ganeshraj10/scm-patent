@@ -6,6 +6,7 @@ import {
   computeSampleCorrelation,
   computeShrinkageIntensity,
   regularizeAndInvertCorrelation,
+  extractAveragedFeatureVector,
 } from './deviationEngine';
 
 /**
@@ -82,42 +83,44 @@ export function buildBehavioralModel(studentId: string, sessions: any[]): Behavi
   const observationMatrix: number[][] = [];
 
   trainingSessions.forEach((session) => {
-    let fTime = 0,
-      fPointer = 0,
-      fScroll = 0,
-      fRevision = 0,
-      fPaste = 0;
-
+    let vector: Record<string, number>;
     if (Array.isArray(session.features)) {
-      const count = session.features.length || 1;
-      session.features.forEach((f: any) => {
-        fTime += f.responseTime || 0;
-        fPointer += f.pointerMovement || 0;
-        fScroll += f.scrollDistance || 0;
-        fRevision += f.revisionCount || 0;
-        fPaste += f.pasteDetected ? 1 : 0;
-      });
-      fTime /= count;
-      fPointer /= count;
-      fScroll /= count;
-      fRevision /= count;
-      fPaste = (fPaste / count) * 100;
+      vector = extractAveragedFeatureVector(session.features);
+    } else if (session.features && typeof session.features === 'object') {
+      const f = session.features as any;
+      let rt = Number(f.responseTime);
+      if (!isNaN(rt) && rt > 500) rt /= 1000;
+      vector = {
+        responseTime: !isNaN(rt) ? rt : 0,
+        revisionCount: !isNaN(Number(f.revisionCount)) ? Number(f.revisionCount) : 0,
+        pointerMovement: !isNaN(Number(f.pointerMovement)) ? Number(f.pointerMovement) : 0,
+        scrollDistance: !isNaN(Number(f.scrollDistance)) ? Number(f.scrollDistance) : 0,
+        pasteDetected: !isNaN(Number(f.pasteDetected)) ? Number(f.pasteDetected) : 0,
+      };
     } else {
-      fTime = session.features.responseTime || 0;
-      fPointer = session.features.pointerMovement || 0;
-      fScroll = session.features.scrollDistance || 0;
-      fRevision = session.features.revisionCount || 0;
-      fPaste = session.features.pasteDetected || 0;
+      vector = {
+        responseTime: 0,
+        revisionCount: 0,
+        pointerMovement: 0,
+        scrollDistance: 0,
+        pasteDetected: 0,
+      };
     }
 
-    features.responseTime.push(fTime);
-    features.revisionCount.push(fRevision);
-    features.pointerMovement.push(fPointer);
-    features.scrollDistance.push(fScroll);
-    features.pasteDetected.push(fPaste);
+    features.responseTime.push(vector.responseTime);
+    features.revisionCount.push(vector.revisionCount);
+    features.pointerMovement.push(vector.pointerMovement);
+    features.scrollDistance.push(vector.scrollDistance);
+    features.pasteDetected.push(vector.pasteDetected);
 
     // Row vector in exact canonical order
-    observationMatrix.push([fTime, fRevision, fPointer, fScroll, fPaste]);
+    observationMatrix.push([
+      vector.responseTime,
+      vector.revisionCount,
+      vector.pointerMovement,
+      vector.scrollDistance,
+      vector.pasteDetected,
+    ]);
   });
 
   const expectations: FeatureExpectation[] = [

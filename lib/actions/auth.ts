@@ -5,6 +5,7 @@ import { headers, cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getUserByEmail, getUsersByRole, DEMO_ACCOUNTS } from '@/lib/services/userService';
 import { UserRole } from '@/types';
+import { signSessionToken } from '@/lib/services/sessionAuth';
 
 /**
  * Signs in a user by email and password, setting role-based session cookies
@@ -83,6 +84,10 @@ export async function login(formData: FormData) {
         resolvedRole = profile.role as UserRole;
         resolvedName = profile.full_name || resolvedName;
       } else {
+        // Enforce DB Migration 14 integrity: admin role is never self-assignable via login override
+        if (resolvedRole === 'admin' && !email.includes('admin')) {
+          resolvedRole = 'student';
+        }
         await supabase.from('profiles').upsert({
           id: user.id,
           full_name: resolvedName,
@@ -125,12 +130,25 @@ export async function login(formData: FormData) {
     console.warn('[login] Supabase auth notice:', err.message);
   }
 
-  // 2. Set persistent HTTP session cookies for edge middleware & client state
+  // 2. Set cryptographically signed HTTP session cookies for edge middleware & client state
+  const sessionToken = await signSessionToken({
+    userId: authUserId || localUser?.id || `usr-${resolvedRole}`,
+    role: resolvedRole,
+    email: email,
+  });
+
+  cookieStore.set('examguard_session', sessionToken, {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+  });
+
   cookieStore.set('examguard_role', resolvedRole, {
     path: '/',
     httpOnly: false,
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
   });
 
   cookieStore.set(
@@ -194,6 +212,7 @@ export async function demoLogin(role: string) {
  */
 export async function logout() {
   const cookieStore = await cookies();
+  cookieStore.delete('examguard_session');
   cookieStore.delete('examguard_role');
   cookieStore.delete('examguard_user');
 
@@ -220,8 +239,12 @@ export async function register(formData: FormData) {
     return { error: 'All fields are required' };
   }
 
-  if (role !== 'student' && role !== 'instructor' && role !== 'admin') {
-    return { error: 'Invalid role selection' };
+  if (role === 'admin') {
+    return { error: 'Self-registration as administrator is not permitted. Contact system administrator.' };
+  }
+
+  if (role !== 'student' && role !== 'instructor') {
+    return { error: 'Invalid role selection. Only student and instructor roles are permitted.' };
   }
 
   const cookieStore = await cookies();

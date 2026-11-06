@@ -9,6 +9,8 @@ import {
   ArrowRight,
   Clock,
   Monitor,
+  Brain,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   BarChart,
@@ -87,13 +89,22 @@ export default function DashboardPage() {
             Longitudinal baseline integrity evaluation active. <em>Disclaimer: Prototype using synthetic research data. Behavioral deviation is not proof of misconduct.</em>
           </p>
         </div>
-        <Link
-          href="/instructor/analysis"
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-900/30 transition-all flex-shrink-0"
-        >
-          Open Integrity Workbench
-          <ArrowRight size={14} />
-        </Link>
+        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+          <Link
+            href="/instructor/xai"
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-900/30 transition-all"
+          >
+            <Brain size={14} />
+            Explainable AI Hub
+          </Link>
+          <Link
+            href="/instructor/analysis"
+            className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-surface-700 hover:bg-surface-600 border border-border text-text-primary text-xs font-semibold transition-all"
+          >
+            Integrity Workbench
+            <ArrowRight size={13} />
+          </Link>
+        </div>
       </div>
 
       {/* KPI row */}
@@ -245,13 +256,17 @@ export default function DashboardPage() {
         >
           <div className="divide-y divide-border">
             {recentAlerts.map((alert) => (
-              <div key={alert.id} className="px-5 py-3.5 flex items-center gap-3">
+              <Link
+                key={alert.id}
+                href={`/instructor/xai?session=${alert.sessionId}`}
+                className="px-5 py-3.5 flex items-center gap-3 hover:bg-surface-700/60 transition-colors group cursor-pointer block"
+              >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-text-primary truncate">
+                  <p className="text-sm font-medium text-text-primary group-hover:text-indigo-400 transition-colors truncate">
                     {alert.studentName}
                   </p>
                   <p className="text-xs text-text-muted truncate mt-0.5">
-                    {alert.examName}
+                    {alert.examName} · <span className="font-mono text-indigo-300">{alert.sessionId}</span>
                   </p>
                 </div>
                 <div className="text-right flex-shrink-0">
@@ -267,7 +282,10 @@ export default function DashboardPage() {
                 >
                   {alert.status === 'review_required' ? 'Review' : alert.status.charAt(0).toUpperCase() + alert.status.slice(1)}
                 </Badge>
-              </div>
+                <span className="text-xs font-semibold text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 ml-1">
+                  XAI <ArrowRight size={12} />
+                </span>
+              </Link>
             ))}
           </div>
         </Card>

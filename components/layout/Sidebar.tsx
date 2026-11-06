@@ -33,6 +33,18 @@ const navItems: NavItem[] = [
     icon: <LayoutDashboard size={18} />,
   },
   {
+    label: 'Explainable AI',
+    href: '/instructor/xai',
+    icon: <Brain size={18} />,
+    badge: 2,
+  },
+  {
+    label: 'Review Queue',
+    href: '/instructor/alerts',
+    icon: <AlertTriangle size={18} />,
+    badge: 2,
+  },
+  {
     label: 'Integrity Analysis',
     href: '/instructor/analysis',
     icon: <Activity size={18} />,
@@ -53,19 +65,8 @@ const navItems: NavItem[] = [
     icon: <ClipboardList size={18} />,
   },
   {
-    label: 'Review Queue',
-    href: '/instructor/alerts',
-    icon: <AlertTriangle size={18} />,
-    badge: 2,
-  },
-  {
-    label: 'Behavioral Models',
-    href: '/instructor/students',
-    icon: <Brain size={18} />,
-  },
-  {
-    label: 'Calibration',
-    href: '/instructor/settings',
+    label: 'Telemetry Validation',
+    href: '/instructor/validation',
     icon: <SlidersHorizontal size={18} />,
   },
   {

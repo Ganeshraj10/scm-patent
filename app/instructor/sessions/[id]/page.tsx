@@ -19,6 +19,7 @@ import {
   Camera,
   Sparkles,
   Eye,
+  Brain,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -86,11 +87,18 @@ export default function SessionDetailPage({ params }: { params: Promise<{ id: st
             {session.examTitle} · {formatAttendedDate(session.startedAt, session.completedAt)} · Device: {session.deviceType}
           </p>
         </div>
-        <Link href={`/instructor/reports/${session.sessionId}`}>
-          <Button variant="outline" size="sm" className="text-xs gap-1.5 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/10">
-            <ShieldCheck size={14} /> View Behavioral Report
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href={`/instructor/xai?session=${session.sessionId}`}>
+            <Button variant="primary" size="sm" className="text-xs gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm">
+              <Brain size={14} /> Explainable AI
+            </Button>
+          </Link>
+          <Link href={`/instructor/reports/${session.sessionId}`}>
+            <Button variant="outline" size="sm" className="text-xs gap-1.5 border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/10">
+              <ShieldCheck size={14} /> Behavioral Report
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Objective Telemetry Banner */}
