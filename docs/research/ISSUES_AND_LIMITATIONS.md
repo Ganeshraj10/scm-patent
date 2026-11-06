@@ -132,3 +132,4 @@ While synthetic validation enables controlled perturbation analysis, several fun
    Applying local differential privacy to student behavioral baselines before cross-institution pooling or cloud synchronization.
 3. **Active Learning Human Feedback Loops:**  
    Incorporating instructor review decisions (`cleared_normal` vs `verified_deviation`) back into model weights via semi-supervised fine-tuning.
+
