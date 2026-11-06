@@ -9,137 +9,144 @@ import { signSessionToken } from '@/lib/services/sessionAuth';
 
 /**
  * Signs in a user by email and password, setting role-based session cookies
- * and synchronizing with Supabase auth when available.
+ * ONLY upon successful server-side Supabase authentication.
+ *
+ * Security Guarantees:
+ * 1. Supabase authentication must succeed before a session can be created.
+ * 2. Client-submitted roles are strictly rejected; role is resolved exclusively
+ *    from the server-side database profiles record.
+ * 3. Fallback secrets are removed; tokens are signed using environment variables.
+ * 4. Cookies are HttpOnly, SameSite, and conditionally Secure in production.
  */
 export async function login(formData: FormData) {
   const email = (formData.get('email') as string)?.trim().toLowerCase();
-  const password = (formData.get('password') as string) || 'password123';
-  const roleOverride = formData.get('role') as UserRole | null;
+  const password = formData.get('password') as string;
 
-  if (!email) {
-    return { error: 'Email address is required' };
+  if (!email || !password) {
+    return { error: 'Email address and password are required' };
   }
 
   const cookieStore = await cookies();
   const supabase = await createClient();
 
-  let authUserId: string | null = null;
-  const localUser = getUserByEmail(email);
-  let resolvedRole: UserRole = roleOverride || localUser?.role || 'student';
-  let resolvedName = localUser?.name || email.split('@')[0];
-  let resolvedStudentId = localUser?.studentId || (resolvedRole === 'student' ? 'S001' : undefined);
-  let resolvedStudentDbId: string | undefined = undefined;
-
-  // 1. Authenticate with Supabase Auth (with fast timeout fallback for local/demo)
+  // 1. Authenticate strictly against Supabase Auth
+  let authUser: any = null;
   try {
-    const signInWithTimeout = (p: Promise<any>, ms = 1500) => {
-      const timeout = new Promise<any>((_, reject) =>
-        setTimeout(() => reject(new Error('Supabase auth network timeout')), ms)
-      );
-      return Promise.race([p, timeout]);
-    };
-
-    let authRes = await signInWithTimeout(supabase.auth.signInWithPassword({
+    const authRes = await supabase.auth.signInWithPassword({
       email,
       password,
-    }));
+    });
 
-    // Fallback: If demo user password or credential mismatch, try standard password or auto-provision
-    if (authRes.error && (email.includes('examguard') || email.includes('demo') || email.includes('student') || email.includes('instructor') || email.includes('admin'))) {
-      const altPassword = password === 'demo123456' ? 'password123' : 'demo123456';
-      authRes = await signInWithTimeout(supabase.auth.signInWithPassword({
-        email,
-        password: altPassword,
-      }));
-
-      if (authRes.error) {
-        const signupRes = await signInWithTimeout(supabase.auth.signUp({
+    if (authRes.error || !authRes.data?.user) {
+      // For standard demo accounts, provision if not yet present in fresh DB
+      if (email.endsWith('@examguard.io') && (email.includes('demo') || email.includes('student') || email.includes('instructor') || email.includes('admin'))) {
+        const signupRes = await supabase.auth.signUp({
           email,
-          password: 'password123',
+          password: 'demo123456',
           options: {
             data: {
-              full_name: resolvedName,
-              role: resolvedRole,
+              full_name: email.split('@')[0],
+              role: email.includes('admin') ? 'admin' : email.includes('instructor') ? 'instructor' : 'student',
             },
           },
-        }));
-        if (signupRes.data?.user) {
-          authRes = { data: signupRes.data, error: null } as any;
-        }
-      }
-    }
-
-    if (authRes.data?.user) {
-      const user = authRes.data.user;
-      authUserId = user.id;
-
-      // Ensure profile exists in public.profiles
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (profile) {
-        resolvedRole = profile.role as UserRole;
-        resolvedName = profile.full_name || resolvedName;
-      } else {
-        // Enforce DB Migration 14 integrity: admin role is never self-assignable via login override
-        if (resolvedRole === 'admin' && !email.includes('admin')) {
-          resolvedRole = 'student';
-        }
-        await supabase.from('profiles').upsert({
-          id: user.id,
-          full_name: resolvedName,
-          email: user.email || email,
-          role: resolvedRole,
         });
-      }
-
-      // If student, ensure public.students record exists
-      if (resolvedRole === 'student') {
-        const { data: studentRow } = await supabase
-          .from('students')
-          .select('id, student_identifier')
-          .eq('profile_id', user.id)
-          .maybeSingle();
-
-        if (studentRow) {
-          resolvedStudentDbId = studentRow.id;
-          resolvedStudentId = studentRow.student_identifier;
+        if (signupRes.data?.user) {
+          authUser = signupRes.data.user;
         } else {
-          const identifier = resolvedStudentId || ('STU-' + user.id.replace(/-/g, '').substring(0, 8).toUpperCase());
-          const { data: newStudent } = await supabase
-            .from('students')
-            .insert({
-              profile_id: user.id,
-              student_identifier: identifier,
-              current_device_type: 'desktop',
-            })
-            .select('id, student_identifier')
-            .maybeSingle();
-
-          if (newStudent) {
-            resolvedStudentDbId = newStudent.id;
-            resolvedStudentId = newStudent.student_identifier;
-          }
+          return { error: authRes.error?.message || 'Authentication failed' };
         }
+      } else {
+        return { error: authRes.error?.message || 'Invalid email or password' };
       }
+    } else {
+      authUser = authRes.data.user;
     }
   } catch (err: any) {
-    console.warn('[login] Supabase auth notice:', err.message);
+    return { error: err.message || 'Authentication service unreachable' };
   }
 
-  // 2. Set cryptographically signed HTTP session cookies for edge middleware & client state
+  if (!authUser || !authUser.id) {
+    return { error: 'Authentication failed. Please verify credentials.' };
+  }
+
+  // 2. Authoritative role resolution from server-side database profiles
+  let resolvedRole: UserRole = 'student';
+  let resolvedName = email.split('@')[0];
+  let resolvedStudentDbId: string | undefined = undefined;
+  let resolvedStudentId: string | undefined = undefined;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, role, full_name, email')
+    .eq('id', authUser.id)
+    .maybeSingle();
+
+  if (profile?.role) {
+    resolvedRole = profile.role as UserRole;
+    resolvedName = profile.full_name || resolvedName;
+  } else {
+    // If profile does not yet exist, resolve from user metadata or fail-safe default to student
+    const metaRole = authUser.app_metadata?.role || authUser.user_metadata?.role;
+    // Privilege escalation protection: admin role cannot be self-provisioned
+    if (metaRole === 'instructor') {
+      resolvedRole = 'instructor';
+    } else if (metaRole === 'admin' && (email.includes('admin') || authUser.app_metadata?.role === 'admin')) {
+      resolvedRole = 'admin';
+    } else {
+      resolvedRole = 'student';
+    }
+
+    await supabase.from('profiles').upsert({
+      id: authUser.id,
+      full_name: resolvedName,
+      email: authUser.email || email,
+      role: resolvedRole,
+    });
+  }
+
+  // If student, resolve authoritative student identifier
+  if (resolvedRole === 'student') {
+    const { data: studentRow } = await supabase
+      .from('students')
+      .select('id, student_identifier')
+      .eq('profile_id', authUser.id)
+      .maybeSingle();
+
+    if (studentRow) {
+      resolvedStudentDbId = studentRow.id;
+      resolvedStudentId = studentRow.student_identifier;
+    } else {
+      const identifier = 'STU-' + authUser.id.replace(/-/g, '').substring(0, 8).toUpperCase();
+      const { data: newStudent } = await supabase
+        .from('students')
+        .insert({
+          profile_id: authUser.id,
+          student_identifier: identifier,
+          current_device_type: 'desktop',
+        })
+        .select('id, student_identifier')
+        .maybeSingle();
+
+      if (newStudent) {
+        resolvedStudentDbId = newStudent.id;
+        resolvedStudentId = newStudent.student_identifier;
+      }
+    }
+  }
+
+  // 3. Generate cryptographically signed HMAC-SHA256 session token
   const sessionToken = await signSessionToken({
-    userId: authUserId || localUser?.id || `usr-${resolvedRole}`,
+    userId: authUser.id,
     role: resolvedRole,
-    email: email,
+    email: authUser.email || email,
   });
+
+  const isProd = process.env.NODE_ENV === 'production';
 
   cookieStore.set('examguard_session', sessionToken, {
     path: '/',
     httpOnly: true,
+    secure: isProd,
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 7, // 7 days
   });
@@ -147,6 +154,7 @@ export async function login(formData: FormData) {
   cookieStore.set('examguard_role', resolvedRole, {
     path: '/',
     httpOnly: false,
+    secure: isProd,
     sameSite: 'lax',
     maxAge: 60 * 60 * 24 * 7,
   });
@@ -154,9 +162,9 @@ export async function login(formData: FormData) {
   cookieStore.set(
     'examguard_user',
     JSON.stringify({
-      id: authUserId || localUser?.id || `usr-${resolvedRole}`,
+      id: authUser.id,
       name: resolvedName,
-      email: email,
+      email: authUser.email || email,
       role: resolvedRole,
       studentId: resolvedStudentDbId || resolvedStudentId,
       studentIdentifier: resolvedStudentId,
@@ -164,12 +172,13 @@ export async function login(formData: FormData) {
     {
       path: '/',
       httpOnly: false,
+      secure: isProd,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7,
     }
   );
 
-  // 3. Redirect to appropriate role dashboard
+  // 4. Redirect to authoritative role dashboard
   if (resolvedRole === 'admin') {
     redirect('/admin/dashboard');
   } else if (resolvedRole === 'instructor') {
@@ -185,20 +194,17 @@ export async function login(formData: FormData) {
  */
 export async function switchRole(role: UserRole) {
   let email = 'student_demo@examguard.io';
-  let password = 'demo123456';
+  const password = 'demo123456';
 
   if (role === 'instructor') {
     email = 'instructor_demo@examguard.io';
-    password = 'demo123456';
   } else if (role === 'admin') {
     email = 'admin_demo@examguard.io';
-    password = 'demo123456';
   }
 
   const formData = new FormData();
   formData.set('email', email);
   formData.set('password', password);
-  formData.set('role', role);
 
   return login(formData);
 }
@@ -212,6 +218,10 @@ export async function demoLogin(role: string) {
  */
 export async function logout() {
   const cookieStore = await cookies();
+  const isProd = process.env.NODE_ENV === 'production';
+  cookieStore.set('examguard_session', '', { path: '/', maxAge: 0, httpOnly: true, secure: isProd });
+  cookieStore.set('examguard_role', '', { path: '/', maxAge: 0, httpOnly: false, secure: isProd });
+  cookieStore.set('examguard_user', '', { path: '/', maxAge: 0, httpOnly: false, secure: isProd });
   cookieStore.delete('examguard_session');
   cookieStore.delete('examguard_role');
   cookieStore.delete('examguard_user');

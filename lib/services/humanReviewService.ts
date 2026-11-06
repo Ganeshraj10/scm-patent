@@ -222,7 +222,7 @@ export class HumanReviewService {
         0,
       ]);
     }
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 25; i++) {
       calData.push([
         22 + Math.sin(i + 20) * 3,
         2 + (i % 2),

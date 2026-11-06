@@ -31,49 +31,63 @@ import {
 } from './types';
 
 /**
- * Inverts an n x n square matrix using Gauss-Jordan elimination with partial pivoting.
+ * Inverts an n x n square matrix using Gauss-Jordan elimination with partial pivoting
+ * and adaptive Tikhonov ridge regularisation for ill-conditioned submatrices.
  */
 function invertSquareMatrix(matrix: number[][]): number[][] {
   const n = matrix.length;
-  const A: number[][] = matrix.map((row, i) => {
-    const aug = new Array(2 * n).fill(0);
-    for (let j = 0; j < n; j++) aug[j] = row[j];
-    aug[n + i] = 1;
-    return aug;
-  });
+  const ridgeLevels = [0, 1e-4, 1e-3, 1e-2, 1e-1];
 
-  for (let i = 0; i < n; i++) {
-    let maxRow = i;
-    for (let k = i + 1; k < n; k++) {
-      if (Math.abs(A[k][i]) > Math.abs(A[maxRow][i])) {
-        maxRow = k;
+  for (const delta of ridgeLevels) {
+    const A: number[][] = matrix.map((row, i) => {
+      const aug = new Array(2 * n).fill(0);
+      for (let j = 0; j < n; j++) aug[j] = row[j] + (i === j ? delta : 0);
+      aug[n + i] = 1;
+      return aug;
+    });
+
+    let success = true;
+
+    for (let i = 0; i < n; i++) {
+      let maxRow = i;
+      for (let k = i + 1; k < n; k++) {
+        if (Math.abs(A[k][i]) > Math.abs(A[maxRow][i])) {
+          maxRow = k;
+        }
       }
-    }
-    const temp = A[i];
-    A[i] = A[maxRow];
-    A[maxRow] = temp;
+      const temp = A[i];
+      A[i] = A[maxRow];
+      A[maxRow] = temp;
 
-    const pivot = A[i][i];
-    if (Math.abs(pivot) < 1e-12) {
-      // Fallback to identity matrix if near-singular
-      return Array.from({ length: n }, (_, r) => Array.from({ length: n }, (_, c) => (r === c ? 1 : 0)));
-    }
+      const pivot = A[i][i];
+      if (Math.abs(pivot) < 1e-12 || !isFinite(pivot) || isNaN(pivot)) {
+        success = false;
+        break;
+      }
 
-    for (let j = 0; j < 2 * n; j++) {
-      A[i][j] /= pivot;
-    }
+      for (let j = 0; j < 2 * n; j++) {
+        A[i][j] /= pivot;
+      }
 
-    for (let k = 0; k < n; k++) {
-      if (k !== i) {
-        const factor = A[k][i];
-        for (let j = 0; j < 2 * n; j++) {
-          A[k][j] -= factor * A[i][j];
+      for (let k = 0; k < n; k++) {
+        if (k !== i) {
+          const factor = A[k][i];
+          for (let j = 0; j < 2 * n; j++) {
+            A[k][j] -= factor * A[i][j];
+          }
         }
       }
     }
+
+    if (success) {
+      const inv = A.map((row) => row.slice(n));
+      const allFinite = inv.every((r) => r.every((val) => isFinite(val) && !isNaN(val)));
+      if (allFinite) return inv;
+    }
   }
 
-  return A.map((row) => row.slice(n));
+  // Explicit failure fallback for strictly non-invertible matrices
+  return Array.from({ length: n }, (_, r) => Array.from({ length: n }, (_, c) => (r === c ? 1 : 0)));
 }
 
 const FEATURE_METADATA: Record<MLFeatureKey, { displayName: string; unit: string; baseThreshold: number }> = {

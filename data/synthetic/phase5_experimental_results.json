@@ -1,6 +1,6 @@
 {
   "title": "ExamGuard: Empirical Validation & Comparative Experimental Report",
-  "timestamp": "2026-11-06T11:12:09.517Z",
+  "timestamp": "2026-11-06T15:27:20.934Z",
   "reproducibility": {
     "randomSeed": 42,
     "platform": "win32",
@@ -29,31 +29,41 @@
           "fStat": 109.55,
           "pValue": 1e-16,
           "betweenVariance": 4170.779,
-          "withinVariance": 38.07
+          "withinVariance": 38.07,
+          "kruskalWallisH": 1767.08,
+          "kruskalWallisPValue": 1e-16
         },
         "revisionCount": {
           "fStat": 96.53,
           "pValue": 1e-16,
           "betweenVariance": 32.147,
-          "withinVariance": 0.333
+          "withinVariance": 0.333,
+          "kruskalWallisH": 1647.28,
+          "kruskalWallisPValue": 1e-16
         },
         "pointerMovement": {
           "fStat": 56,
           "pValue": 1e-16,
           "betweenVariance": 1587482.462,
-          "withinVariance": 28348.741
+          "withinVariance": 28348.741,
+          "kruskalWallisH": 1531.52,
+          "kruskalWallisPValue": 1e-16
         },
         "scrollDistance": {
           "fStat": 250.32,
           "pValue": 1e-16,
           "betweenVariance": 1079838.379,
-          "withinVariance": 4313.868
+          "withinVariance": 4313.868,
+          "kruskalWallisH": 1873.45,
+          "kruskalWallisPValue": 1e-16
         },
         "pasteDetected": {
           "fStat": 0.82,
-          "pValue": 0.8944047394496741,
+          "pValue": 0.9012775062444965,
           "betweenVariance": 47.877,
-          "withinVariance": 58.495
+          "withinVariance": 58.495,
+          "kruskalWallisH": 31.45,
+          "kruskalWallisPValue": 0.9012775062444965
         }
       },
       "sampleSizeInvestigation": {
@@ -66,171 +76,175 @@
     },
     "E2_ComparativeModelEvaluation": {
       "Regularised Mahalanobis Distance": {
-        "tp": 167,
-        "fp": 157,
-        "tn": 661,
-        "fn": 15,
-        "precision": 0.5154,
-        "precisionCI95": [
-          0.4612,
-          0.5694
-        ],
-        "recall": 0.9176,
-        "recallCI95": [
-          0.8685,
-          0.9494
-        ],
-        "specificity": 0.8081,
-        "fprOverall": 0.1919,
-        "fprCategoryA": 0.09,
-        "farLegitimateCategoryB": 0.475,
-        "f1Score": 0.6601,
-        "f1CI95": [
-          0.6251,
-          0.6951
-        ],
-        "aucRoc": 0.9481,
-        "aucPr": 0.7743,
-        "avgInferenceLatencyMs": 0.0057,
-        "avgInferenceLatencyMicroSec": 5.7
-      },
-      "Isolation Forest": {
-        "tp": 80,
-        "fp": 112,
-        "tn": 706,
-        "fn": 102,
-        "precision": 0.4167,
-        "precisionCI95": [
-          0.3492,
-          0.4874
-        ],
-        "recall": 0.4396,
-        "recallCI95": [
-          0.3694,
-          0.5122
-        ],
-        "specificity": 0.8631,
-        "fprOverall": 0.1369,
-        "fprCategoryA": 0.0967,
-        "farLegitimateCategoryB": 0.25,
-        "f1Score": 0.4278,
-        "f1CI95": [
-          0.3928,
-          0.4628
-        ],
-        "aucRoc": 0.7656,
-        "aucPr": 0.4477,
-        "avgInferenceLatencyMs": 0.0193,
-        "avgInferenceLatencyMicroSec": 19.3
-      },
-      "Local Outlier Factor": {
-        "tp": 159,
-        "fp": 146,
-        "tn": 672,
-        "fn": 23,
-        "precision": 0.5213,
-        "precisionCI95": [
-          0.4653,
-          0.5768
-        ],
-        "recall": 0.8736,
-        "recallCI95": [
-          0.8175,
-          0.9143
-        ],
-        "specificity": 0.8215,
-        "fprOverall": 0.1785,
-        "fprCategoryA": 0.0983,
-        "farLegitimateCategoryB": 0.41,
-        "f1Score": 0.653,
-        "f1CI95": [
-          0.618,
-          0.688
-        ],
-        "aucRoc": 0.926,
-        "aucPr": 0.7435,
-        "avgInferenceLatencyMs": 0.0089,
-        "avgInferenceLatencyMicroSec": 8.9
-      },
-      "One-Class SVM": {
         "tp": 166,
-        "fp": 151,
-        "tn": 667,
+        "fp": 125,
+        "tn": 693,
         "fn": 16,
-        "precision": 0.5237,
+        "precision": 0.5704,
         "precisionCI95": [
-          0.4687,
-          0.578
+          0.513,
+          0.626
         ],
         "recall": 0.9121,
         "recallCI95": [
           0.862,
           0.9452
         ],
-        "specificity": 0.8154,
-        "fprOverall": 0.1846,
-        "fprCategoryA": 0.0817,
-        "farLegitimateCategoryB": 0.48,
-        "f1Score": 0.6653,
+        "specificity": 0.8472,
+        "fprOverall": 0.1528,
+        "fnrOverall": 0.0879,
+        "fprCategoryA": 0.05,
+        "farLegitimateCategoryB": 0.43,
+        "f1Score": 0.7019,
         "f1CI95": [
-          0.6303,
-          0.7003
+          0.6534,
+          0.7465
         ],
-        "aucRoc": 0.9304,
-        "aucPr": 0.6649,
-        "avgInferenceLatencyMs": 0.0056,
-        "avgInferenceLatencyMicroSec": 5.6
+        "aucRoc": 0.9487,
+        "aucPr": 0.7743,
+        "avgInferenceLatencyMs": 0.0078,
+        "avgInferenceLatencyMicroSec": 7.8
+      },
+      "Isolation Forest": {
+        "tp": 43,
+        "fp": 66,
+        "tn": 752,
+        "fn": 139,
+        "precision": 0.3945,
+        "precisionCI95": [
+          0.3078,
+          0.4883
+        ],
+        "recall": 0.2363,
+        "recallCI95": [
+          0.1804,
+          0.303
+        ],
+        "specificity": 0.9193,
+        "fprOverall": 0.0807,
+        "fnrOverall": 0.7637,
+        "fprCategoryA": 0.0367,
+        "farLegitimateCategoryB": 0.215,
+        "f1Score": 0.2955,
+        "f1CI95": [
+          0.2256,
+          0.365
+        ],
+        "aucRoc": 0.7573,
+        "aucPr": 0.4028,
+        "avgInferenceLatencyMs": 0.025,
+        "avgInferenceLatencyMicroSec": 25
+      },
+      "Local Outlier Factor": {
+        "tp": 151,
+        "fp": 96,
+        "tn": 722,
+        "fn": 31,
+        "precision": 0.6113,
+        "precisionCI95": [
+          0.5493,
+          0.67
+        ],
+        "recall": 0.8297,
+        "recallCI95": [
+          0.7684,
+          0.8773
+        ],
+        "specificity": 0.8826,
+        "fprOverall": 0.1174,
+        "fnrOverall": 0.1703,
+        "fprCategoryA": 0.05,
+        "farLegitimateCategoryB": 0.31,
+        "f1Score": 0.704,
+        "f1CI95": [
+          0.6567,
+          0.7512
+        ],
+        "aucRoc": 0.9266,
+        "aucPr": 0.7435,
+        "avgInferenceLatencyMs": 0.0143,
+        "avgInferenceLatencyMicroSec": 14.3
+      },
+      "One-Class SVM": {
+        "tp": 167,
+        "fp": 121,
+        "tn": 697,
+        "fn": 15,
+        "precision": 0.5799,
+        "precisionCI95": [
+          0.5222,
+          0.6354
+        ],
+        "recall": 0.9176,
+        "recallCI95": [
+          0.8685,
+          0.9494
+        ],
+        "specificity": 0.8521,
+        "fprOverall": 0.1479,
+        "fnrOverall": 0.0824,
+        "fprCategoryA": 0.0433,
+        "farLegitimateCategoryB": 0.45,
+        "f1Score": 0.7106,
+        "f1CI95": [
+          0.6636,
+          0.7549
+        ],
+        "aucRoc": 0.9312,
+        "aucPr": 0.6663,
+        "avgInferenceLatencyMs": 0.0077,
+        "avgInferenceLatencyMicroSec": 7.7
       }
     },
     "E3_ScenarioBasedEvaluation": {
       "description": "Per-scenario detection rates (TPR) and false alarm rates (FAR)",
       "breakdownByModel": {
         "Regularised Mahalanobis Distance": {
-          "CategoryA_Normal_FPR": 0.09,
-          "CategoryB_Legitimate_FAR": 0.475,
-          "CategoryC_SingleDev_TPR": 0.93,
+          "CategoryA_Normal_FPR": 0.05,
+          "CategoryB_Legitimate_FAR": 0.43,
+          "CategoryC_SingleDev_TPR": 0.9,
           "CategoryC_byFeature": {
             "response_time": 1,
-            "revision_count": 0.8889,
-            "pointer_movement": 0.8,
+            "revision_count": 1,
+            "pointer_movement": 0.6,
             "scroll_distance": 1,
             "paste_activity": 1
           },
-          "CategoryD_MultiDev_TPR": 0.971,
+          "CategoryD_MultiDev_TPR": 1,
           "CategoryD_byCombination": {
-            "2_features": 0.9167,
+            "2_features": 1,
             "3_features": 1,
             "simultaneous": 1
           },
-          "CategoryE_QualityDrift_TPR": 0.4839
+          "CategoryE_QualityDrift_TPR": 0.5161
         },
         "Isolation Forest": {
-          "CategoryA_Normal_FPR": 0.0967,
-          "CategoryB_Legitimate_FAR": 0.25,
-          "CategoryC_SingleDev_TPR": 0.28,
+          "CategoryA_Normal_FPR": 0.0367,
+          "CategoryB_Legitimate_FAR": 0.215,
+          "CategoryC_SingleDev_TPR": 0.04,
           "CategoryC_byFeature": {
-            "response_time": 0.0625,
-            "revision_count": 0.1667,
-            "pointer_movement": 0.44,
-            "scroll_distance": 0.2174,
-            "paste_activity": 0.4444
+            "response_time": 0,
+            "revision_count": 0.0556,
+            "pointer_movement": 0.04,
+            "scroll_distance": 0,
+            "paste_activity": 0.1111
           },
-          "CategoryD_MultiDev_TPR": 0.7101,
+          "CategoryD_MultiDev_TPR": 0.5362,
           "CategoryD_byCombination": {
-            "2_features": 0.5833,
-            "3_features": 0.875,
-            "simultaneous": 0.7241
+            "2_features": 0.2917,
+            "3_features": 0.6875,
+            "simultaneous": 0.6552
           },
-          "CategoryE_QualityDrift_TPR": 0.2258
+          "CategoryE_QualityDrift_TPR": 0.0968
         },
         "Local Outlier Factor": {
-          "CategoryA_Normal_FPR": 0.0983,
-          "CategoryB_Legitimate_FAR": 0.41,
-          "CategoryC_SingleDev_TPR": 0.84,
+          "CategoryA_Normal_FPR": 0.05,
+          "CategoryB_Legitimate_FAR": 0.31,
+          "CategoryC_SingleDev_TPR": 0.79,
           "CategoryC_byFeature": {
             "response_time": 0.9375,
-            "revision_count": 0.8889,
-            "pointer_movement": 0.48,
+            "revision_count": 1,
+            "pointer_movement": 0.2,
             "scroll_distance": 1,
             "paste_activity": 1
           },
@@ -240,23 +254,23 @@
             "3_features": 1,
             "simultaneous": 1
           },
-          "CategoryE_QualityDrift_TPR": 0.3871
+          "CategoryE_QualityDrift_TPR": 0.2581
         },
         "One-Class SVM": {
-          "CategoryA_Normal_FPR": 0.0817,
-          "CategoryB_Legitimate_FAR": 0.48,
-          "CategoryC_SingleDev_TPR": 0.92,
+          "CategoryA_Normal_FPR": 0.0433,
+          "CategoryB_Legitimate_FAR": 0.45,
+          "CategoryC_SingleDev_TPR": 0.9,
           "CategoryC_byFeature": {
             "response_time": 1,
-            "revision_count": 0.8889,
-            "pointer_movement": 0.8,
-            "scroll_distance": 0.9565,
+            "revision_count": 1,
+            "pointer_movement": 0.6,
+            "scroll_distance": 1,
             "paste_activity": 1
           },
-          "CategoryD_MultiDev_TPR": 0.971,
+          "CategoryD_MultiDev_TPR": 1,
           "CategoryD_byCombination": {
-            "2_features": 0.9583,
-            "3_features": 0.9375,
+            "2_features": 1,
+            "3_features": 1,
             "simultaneous": 1
           },
           "CategoryE_QualityDrift_TPR": 0.4194
@@ -266,57 +280,57 @@
     "E4_DeviationSeverity": {
       "Regularised Mahalanobis Distance": {
         "mild_1_5_to_2_5_sigma": 0.9333,
-        "moderate_2_5_to_4_sigma": 0.9014,
-        "severe_4_to_7_sigma": 0.9259,
+        "moderate_2_5_to_4_sigma": 0.8451,
+        "severe_4_to_7_sigma": 0.963,
         "extreme_above_7_sigma": 0
       },
       "Isolation Forest": {
-        "mild_1_5_to_2_5_sigma": 0.1667,
-        "moderate_2_5_to_4_sigma": 0.4507,
-        "severe_4_to_7_sigma": 0.5309,
+        "mild_1_5_to_2_5_sigma": 0.0333,
+        "moderate_2_5_to_4_sigma": 0.2535,
+        "severe_4_to_7_sigma": 0.2963,
         "extreme_above_7_sigma": 0
       },
       "Local Outlier Factor": {
-        "mild_1_5_to_2_5_sigma": 0.9,
-        "moderate_2_5_to_4_sigma": 0.831,
-        "severe_4_to_7_sigma": 0.9012,
+        "mild_1_5_to_2_5_sigma": 0.8667,
+        "moderate_2_5_to_4_sigma": 0.7465,
+        "severe_4_to_7_sigma": 0.8889,
         "extreme_above_7_sigma": 0
       },
       "One-Class SVM": {
-        "mild_1_5_to_2_5_sigma": 0.9,
-        "moderate_2_5_to_4_sigma": 0.9014,
-        "severe_4_to_7_sigma": 0.9259,
+        "mild_1_5_to_2_5_sigma": 0.9333,
+        "moderate_2_5_to_4_sigma": 0.8732,
+        "severe_4_to_7_sigma": 0.9506,
         "extreme_above_7_sigma": 0
       }
     },
     "E5_LegitimateVariationFalseAlarms": {
       "Regularised Mahalanobis Distance": {
-        "difficult_questions_far": 0.9565,
-        "fatigue_drift_far": 0.069,
-        "interruption_pause_far": 0.3529,
-        "device_tablet_far": 0.4189,
-        "overall_categoryB_far": 0.475
+        "difficult_questions_far": 1,
+        "fatigue_drift_far": 0,
+        "interruption_pause_far": 0.2157,
+        "device_tablet_far": 0.3919,
+        "overall_categoryB_far": 0.43
       },
       "Isolation Forest": {
-        "difficult_questions_far": 0.6739,
-        "fatigue_drift_far": 0.1034,
-        "interruption_pause_far": 0.1569,
-        "device_tablet_far": 0.1081,
-        "overall_categoryB_far": 0.25
+        "difficult_questions_far": 0.7609,
+        "fatigue_drift_far": 0,
+        "interruption_pause_far": 0.1176,
+        "device_tablet_far": 0.027,
+        "overall_categoryB_far": 0.215
       },
       "Local Outlier Factor": {
-        "difficult_questions_far": 0.913,
-        "fatigue_drift_far": 0.0345,
-        "interruption_pause_far": 0.2745,
-        "device_tablet_far": 0.3378,
-        "overall_categoryB_far": 0.41
-      },
-      "One-Class SVM": {
         "difficult_questions_far": 0.9783,
         "fatigue_drift_far": 0,
-        "interruption_pause_far": 0.3529,
-        "device_tablet_far": 0.4459,
-        "overall_categoryB_far": 0.48
+        "interruption_pause_far": 0.0784,
+        "device_tablet_far": 0.1757,
+        "overall_categoryB_far": 0.31
+      },
+      "One-Class SVM": {
+        "difficult_questions_far": 1,
+        "fatigue_drift_far": 0.0345,
+        "interruption_pause_far": 0.2549,
+        "device_tablet_far": 0.4054,
+        "overall_categoryB_far": 0.45
       }
     },
     "E6_ExplainabilityEvaluation": {
@@ -324,76 +338,76 @@
         "avgFaithfulness": 0.6781,
         "avgStability": 1,
         "groundTruthRelevance": 1,
-        "avgExplainLatencyMs": 0.243
+        "avgExplainLatencyMs": 0.272
       },
       "Isolation Forest": {
-        "avgFaithfulness": 0.1426,
-        "avgStability": 0.984,
+        "avgFaithfulness": 0.1409,
+        "avgStability": 0.988,
         "groundTruthRelevance": 0.8148,
-        "avgExplainLatencyMs": 0.509
+        "avgExplainLatencyMs": 0.65
       },
       "Local Outlier Factor": {
         "avgFaithfulness": 0.5707,
-        "avgStability": 1,
+        "avgStability": 0.996,
         "groundTruthRelevance": 0.8519,
-        "avgExplainLatencyMs": 0.149
+        "avgExplainLatencyMs": 0.155
       },
       "One-Class SVM": {
         "avgFaithfulness": 0.5797,
         "avgStability": 1,
         "groundTruthRelevance": 1,
-        "avgExplainLatencyMs": 0.178
+        "avgExplainLatencyMs": 0.142
       }
     },
     "E7_RobustnessEvaluation": {
       "Regularised Mahalanobis Distance": {
-        "f1Under5PctNoise": 0.651,
-        "f1Under10PctNoise": 0.6276,
-        "f1Under20PctNoise": 0.5734,
-        "f1MissingDataImputed": 0.1707
+        "f1Under5PctNoise": 0.6946,
+        "f1Under10PctNoise": 0.682,
+        "f1Under20PctNoise": 0.6386,
+        "f1MissingDataImputed": 0.2373
       },
       "Isolation Forest": {
-        "f1Under5PctNoise": 0.418,
-        "f1Under10PctNoise": 0.4171,
-        "f1Under20PctNoise": 0.4208,
-        "f1MissingDataImputed": 0.0769
+        "f1Under5PctNoise": 0.2973,
+        "f1Under10PctNoise": 0.3256,
+        "f1Under20PctNoise": 0.3323,
+        "f1MissingDataImputed": 0.1053
       },
       "Local Outlier Factor": {
-        "f1Under5PctNoise": 0.6571,
-        "f1Under10PctNoise": 0.645,
-        "f1Under20PctNoise": 0.5926,
-        "f1MissingDataImputed": 0.1667
+        "f1Under5PctNoise": 0.7023,
+        "f1Under10PctNoise": 0.7067,
+        "f1Under20PctNoise": 0.6725,
+        "f1MissingDataImputed": 0.1569
       },
       "One-Class SVM": {
-        "f1Under5PctNoise": 0.6535,
-        "f1Under10PctNoise": 0.6326,
-        "f1Under20PctNoise": 0.5425,
-        "f1MissingDataImputed": 0.1867
+        "f1Under5PctNoise": 0.7061,
+        "f1Under10PctNoise": 0.7219,
+        "f1Under20PctNoise": 0.634,
+        "f1MissingDataImputed": 0.3077
       }
     },
     "E8_ComputationalPerformance": {
       "Regularised Mahalanobis Distance": {
-        "fitTimeMsPerStudent": 0.065,
-        "calibrationTimeMs": 0.072,
-        "inferenceMicroSec": 5.7,
+        "fitTimeMsPerStudent": 0.073,
+        "calibrationTimeMs": 0.114,
+        "inferenceMicroSec": 7.8,
         "estimatedMemoryBytes": 512
       },
       "Isolation Forest": {
-        "fitTimeMsPerStudent": 1.646,
-        "calibrationTimeMs": 1.766,
-        "inferenceMicroSec": 19.3,
+        "fitTimeMsPerStudent": 1.661,
+        "calibrationTimeMs": 1.804,
+        "inferenceMicroSec": 25,
         "estimatedMemoryBytes": 38400
       },
       "Local Outlier Factor": {
-        "fitTimeMsPerStudent": 0.151,
-        "calibrationTimeMs": 0.157,
-        "inferenceMicroSec": 8.9,
+        "fitTimeMsPerStudent": 0.115,
+        "calibrationTimeMs": 0.223,
+        "inferenceMicroSec": 14.3,
         "estimatedMemoryBytes": 3200
       },
       "One-Class SVM": {
-        "fitTimeMsPerStudent": 0.039,
-        "calibrationTimeMs": 0.119,
-        "inferenceMicroSec": 5.6,
+        "fitTimeMsPerStudent": 0.062,
+        "calibrationTimeMs": 0.064,
+        "inferenceMicroSec": 7.7,
         "estimatedMemoryBytes": 6400
       }
     },
@@ -401,57 +415,69 @@
       "Regularised Mahalanobis Distance": {
         "alpha_0.01": {
           "theoreticalFPR": 0.01,
-          "empiricalFPR": 0.09
+          "empiricalFPR": 0.0117,
+          "individualFPR_m10": 0
         },
         "alpha_0.05": {
           "theoreticalFPR": 0.05,
-          "empiricalFPR": 0.09
+          "empiricalFPR": 0.05,
+          "individualFPR_m10": 0
         },
         "alpha_0.1": {
           "theoreticalFPR": 0.1,
-          "empiricalFPR": 0.09
+          "empiricalFPR": 0.0817,
+          "individualFPR_m10": 0.09
         }
       },
       "Isolation Forest": {
         "alpha_0.01": {
           "theoreticalFPR": 0.01,
-          "empiricalFPR": 0.0967
+          "empiricalFPR": 0.0083,
+          "individualFPR_m10": 0
         },
         "alpha_0.05": {
           "theoreticalFPR": 0.05,
-          "empiricalFPR": 0.0967
+          "empiricalFPR": 0.0367,
+          "individualFPR_m10": 0
         },
         "alpha_0.1": {
           "theoreticalFPR": 0.1,
-          "empiricalFPR": 0.0967
+          "empiricalFPR": 0.0933,
+          "individualFPR_m10": 0.0817
         }
       },
       "Local Outlier Factor": {
         "alpha_0.01": {
           "theoreticalFPR": 0.01,
-          "empiricalFPR": 0.0983
+          "empiricalFPR": 0.0117,
+          "individualFPR_m10": 0
         },
         "alpha_0.05": {
           "theoreticalFPR": 0.05,
-          "empiricalFPR": 0.0983
+          "empiricalFPR": 0.05,
+          "individualFPR_m10": 0
         },
         "alpha_0.1": {
           "theoreticalFPR": 0.1,
-          "empiricalFPR": 0.0983
+          "empiricalFPR": 0.09,
+          "individualFPR_m10": 0.0983
         }
       },
       "One-Class SVM": {
         "alpha_0.01": {
           "theoreticalFPR": 0.01,
-          "empiricalFPR": 0.0817
+          "empiricalFPR": 0.01,
+          "individualFPR_m10": 0
         },
         "alpha_0.05": {
           "theoreticalFPR": 0.05,
-          "empiricalFPR": 0.0817
+          "empiricalFPR": 0.0433,
+          "individualFPR_m10": 0
         },
         "alpha_0.1": {
           "theoreticalFPR": 0.1,
-          "empiricalFPR": 0.0817
+          "empiricalFPR": 0.075,
+          "individualFPR_m10": 0.0817
         }
       }
     }

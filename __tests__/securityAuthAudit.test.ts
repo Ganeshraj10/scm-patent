@@ -376,4 +376,64 @@ describe('ExamGuard Security, Authentication & Architectural Boundaries Audit', 
       expect(ENGINE_A_TYPE).not.toEqual(ENGINE_B_TYPE);
     });
   });
+
+  describe('5. Cryptographic Session Token & Secret Enforcement', () => {
+    it('5.1 Rejects expired session tokens', async () => {
+      // Create a token with durationMs = -1000 (already expired 1 second ago)
+      const expiredToken = await signSessionToken({
+        userId: 'usr-student-001',
+        role: 'student',
+        email: 'student@university.edu',
+        durationMs: -1000,
+      });
+
+      const verified = await verifySessionToken(expiredToken);
+      expect(verified).toBeNull();
+    });
+
+    it('5.2 Rejects tampered signatures on session tokens', async () => {
+      const validToken = await signSessionToken({
+        userId: 'usr-student-001',
+        role: 'student',
+        email: 'student@university.edu',
+      });
+
+      const parts = validToken.split('.');
+      const forgedToken = `${parts[0]}.forged_invalid_signature_12345`;
+      const verified = await verifySessionToken(forgedToken);
+      expect(verified).toBeNull();
+    });
+
+    it('5.3 Fails securely when environment signing secret is missing', async () => {
+      const originalSecret = process.env.SESSION_SECRET;
+      const originalSupabaseKey = process.env.SUPABASE_SECRET_KEY;
+      try {
+        delete process.env.SESSION_SECRET;
+        delete process.env.SUPABASE_SECRET_KEY;
+
+        // signSessionToken must throw rather than using an insecure fallback
+        await expect(
+          signSessionToken({
+            userId: 'usr-student-001',
+            role: 'student',
+            email: 'student@university.edu',
+          })
+        ).rejects.toThrow(/Missing mandatory session signing secret/);
+
+        // verifySessionToken must fail securely and return null
+        const verified = await verifySessionToken('any.token');
+        expect(verified).toBeNull();
+      } finally {
+        process.env.SESSION_SECRET = originalSecret;
+        if (originalSupabaseKey) process.env.SUPABASE_SECRET_KEY = originalSupabaseKey;
+      }
+    });
+
+    it('5.4 Rejects malformed tokens missing period or payload', async () => {
+      expect(await verifySessionToken(null)).toBeNull();
+      expect(await verifySessionToken('')).toBeNull();
+      expect(await verifySessionToken('not-a-valid-token')).toBeNull();
+      expect(await verifySessionToken('header.payload.signature.extra')).toBeNull();
+    });
+  });
 });

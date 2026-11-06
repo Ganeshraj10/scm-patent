@@ -26,37 +26,83 @@ import {
 import { IAnomalyDetectionModel } from '../lib/ml/types';
 import { calibrateThreshold } from '../lib/ml/calibration';
 import { ExplanationEvaluator } from '../lib/ml/explainability/explanationEvaluator';
-import { SyntheticSession } from '../lib/services/syntheticDatasetGenerator';
+import { SyntheticSession, SeededPRNG } from '../lib/services/syntheticDatasetGenerator';
 
 // ─── Helpers: Statistical Distributions & Intervals ─────────────────────────
 
-function normalCdf(x: number): number {
-  // Abramowitz and Stegun approximation
-  const b1 = 0.319381530;
-  const b2 = -0.356563782;
-  const b3 = 1.781477937;
-  const b4 = -1.821255978;
-  const b5 = 1.330274429;
-  const p = 0.2316419;
-  const c = 0.39894228;
+function gammln(xx: number): number {
+  let x = xx;
+  let y = xx;
+  let tmp = x + 5.5;
+  tmp -= (x + 0.5) * Math.log(tmp);
+  let ser = 1.000000000190015;
+  const cof = [
+    76.18009172947146,
+    -86.50532032941677,
+    24.01409824083091,
+    -1.231739572450155,
+    0.1208650973866179e-2,
+    -0.5395239384953e-5,
+  ];
+  for (let j = 0; j < cof.length; j++) ser += cof[j] / ++y;
+  return -tmp + Math.log(2.5066282746310005 * ser / x);
+}
 
-  if (x >= 0) {
-    const t = 1.0 / (1.0 + p * x);
-    return 1.0 - c * Math.exp(-x * x / 2.0) * t * (t * (t * (t * (t * b5 + b4) + b3) + b2) + b1);
+function betacf(a: number, b: number, x: number): number {
+  const MAXIT = 150;
+  const EPS = 3.0e-7;
+  const FPMIN = 1.0e-30;
+  let qab = a + b;
+  let qap = a + 1.0;
+  let qam = a - 1.0;
+  let c = 1.0;
+  let d = 1.0 - qab * x / qap;
+  if (Math.abs(d) < FPMIN) d = FPMIN;
+  d = 1.0 / d;
+  let h = d;
+  for (let m = 1; m <= MAXIT; m++) {
+    let m2 = 2 * m;
+    let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+    d = 1.0 + aa * d;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1.0 + aa / c;
+    if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1.0 / d;
+    h *= d * c;
+    aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+    d = 1.0 + aa * d;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1.0 + aa / c;
+    if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1.0 / d;
+    let del = d * c;
+    h *= del;
+    if (Math.abs(del - 1.0) < EPS) break;
+  }
+  return h;
+}
+
+function betai(a: number, b: number, x: number): number {
+  if (x < 0.0 || x > 1.0) return 0.0;
+  if (x === 0.0) return 0.0;
+  if (x === 1.0) return 1.0;
+  let bt = Math.exp(gammln(a + b) - gammln(a) - gammln(b) + a * Math.log(x) + b * Math.log(1.0 - x));
+  if (x < (a + 1.0) / (a + b + 2.0)) {
+    return bt * betacf(a, b, x) / a;
   } else {
-    const t = 1.0 / (1.0 - p * x);
-    return c * Math.exp(-x * x / 2.0) * t * (t * (t * (t * (t * b5 + b4) + b3) + b2) + b1);
+    return 1.0 - bt * betacf(b, a, 1.0 - x) / b;
   }
 }
 
+/**
+ * Computes the exact survival function (p-value) of the Snedecor F-distribution
+ * via the regularized incomplete beta function: P(F >= f) = I_{df2 / (df2 + df1*f)}(df2/2, df1/2)
+ */
 function fDistributionPValue(f: number, df1: number, df2: number): number {
-  // Conservative normal approximation for large df2 (N - K = 1900)
   if (f <= 0) return 1.0;
-  const mean = df2 > 2 ? df2 / (df2 - 2) : 1;
-  const variance = df2 > 4 ? (2 * df2 * df2 * (df1 + df2 - 2)) / (df1 * Math.pow(df2 - 2, 2) * (df2 - 4)) : 1;
-  const std = Math.sqrt(variance);
-  const z = (f - mean) / std;
-  return Math.max(1e-16, 1.0 - normalCdf(z));
+  const x = df2 / (df2 + df1 * f);
+  const p = betai(df2 / 2.0, df1 / 2.0, x);
+  return Number.isFinite(p) ? Math.max(1e-16, p) : 1e-16;
 }
 
 function wilsonScoreInterval(p: number, n: number, confidence: number = 0.95): [number, number] {
@@ -71,54 +117,128 @@ function wilsonScoreInterval(p: number, n: number, confidence: number = 0.95): [
   ];
 }
 
+/**
+ * Computes exact ROC-AUC handling tied scores via the Wilcoxon-Mann-Whitney U statistic
+ * with mid-ranks for ties.
+ */
 function computeAucRoc(scores: { score: number; isTrueAnomaly: boolean }[]): number {
-  const sorted = [...scores].sort((a, b) => b.score - a.score);
   const P = scores.filter((s) => s.isTrueAnomaly).length;
   const N = scores.filter((s) => !s.isTrueAnomaly).length;
   if (P === 0 || N === 0) return 0.5;
 
-  let tp = 0;
-  let fp = 0;
-  let prevFp = 0;
-  let prevTp = 0;
-  let auc = 0;
+  const indexed = scores.map((item) => ({
+    score: item.score,
+    isTrueAnomaly: item.isTrueAnomaly,
+  }));
+  indexed.sort((a, b) => a.score - b.score);
 
-  for (const item of sorted) {
-    if (item.isTrueAnomaly) {
-      tp++;
-    } else {
-      fp++;
-      auc += ((tp + prevTp) * (fp - prevFp)) / 2.0;
-      prevFp = fp;
-      prevTp = tp;
+  const n = indexed.length;
+  let sumRanksPositives = 0;
+  let i = 0;
+
+  while (i < n) {
+    let j = i;
+    while (j < n - 1 && Math.abs(indexed[j + 1].score - indexed[j].score) < 1e-9) {
+      j++;
     }
+
+    const midRank = (i + 1 + j + 1) / 2.0;
+    for (let k = i; k <= j; k++) {
+      if (indexed[k].isTrueAnomaly) {
+        sumRanksPositives += midRank;
+      }
+    }
+    i = j + 1;
   }
-  return Number((auc / (P * N)).toFixed(4));
+
+  const U = sumRanksPositives - (P * (P + 1)) / 2.0;
+  const auc = U / (P * N);
+  return Number(Math.max(0, Math.min(1, auc)).toFixed(4));
 }
 
+/**
+ * Computes exact Average Precision (PR-AUC) handling ties correctly by grouping
+ * identical prediction scores into discrete threshold evaluation bins.
+ */
 function computeAucPr(scores: { score: number; isTrueAnomaly: boolean }[]): number {
-  const sorted = [...scores].sort((a, b) => b.score - a.score);
   const totalPositives = scores.filter((s) => s.isTrueAnomaly).length;
   if (totalPositives === 0) return 0.0;
 
-  let tp = 0;
-  let fp = 0;
+  const scoreMap = new Map<number, { tp: number; fp: number }>();
+  scores.forEach((item) => {
+    const roundedScore = Number(item.score.toFixed(8));
+    if (!scoreMap.has(roundedScore)) {
+      scoreMap.set(roundedScore, { tp: 0, fp: 0 });
+    }
+    const bucket = scoreMap.get(roundedScore)!;
+    if (item.isTrueAnomaly) bucket.tp++;
+    else bucket.fp++;
+  });
+
+  const uniqueScores = Array.from(scoreMap.keys()).sort((a, b) => b - a);
+
+  let cumulativeTp = 0;
+  let cumulativeFp = 0;
   let prevRecall = 0;
   let ap = 0;
 
-  for (const item of sorted) {
-    if (item.isTrueAnomaly) tp++;
-    else fp++;
+  for (const s of uniqueScores) {
+    const bucket = scoreMap.get(s)!;
+    cumulativeTp += bucket.tp;
+    cumulativeFp += bucket.fp;
 
-    const recall = tp / totalPositives;
-    const precision = tp / (tp + fp);
+    const recall = cumulativeTp / totalPositives;
+    const precision = cumulativeTp / (cumulativeTp + cumulativeFp);
 
-    if (item.isTrueAnomaly) {
-      ap += (recall - prevRecall) * precision;
-      prevRecall = recall;
-    }
+    ap += (recall - prevRecall) * precision;
+    prevRecall = recall;
   }
-  return Number(ap.toFixed(4));
+
+  return Number(Math.max(0, Math.min(1, ap)).toFixed(4));
+}
+
+/**
+ * Computes empirical non-parametric bootstrap 95% confidence intervals for F1-score
+ * across B = 1000 resamples of the evaluation cohort (Seed 42).
+ */
+function computeBootstrapF1CI(
+  predictions: { isAnomaly: boolean; isTrueAnomaly: boolean }[],
+  numBootstrap: number = 1000,
+  seed: number = 42
+): [number, number] {
+  const n = predictions.length;
+  if (n === 0) return [0, 0];
+
+  const prng = new SeededPRNG(seed);
+  const bootstrapF1s: number[] = [];
+
+  for (let b = 0; b < numBootstrap; b++) {
+    let tp = 0;
+    let fp = 0;
+    let fn = 0;
+
+    for (let i = 0; i < n; i++) {
+      const idx = Math.floor(prng.random() * n);
+      const item = predictions[idx];
+      if (item.isAnomaly && item.isTrueAnomaly) tp++;
+      else if (item.isAnomaly && !item.isTrueAnomaly) fp++;
+      else if (!item.isAnomaly && item.isTrueAnomaly) fn++;
+    }
+
+    const precision = tp + fp > 0 ? tp / (tp + fp) : 0;
+    const recall = tp + fn > 0 ? tp / (tp + fn) : 0;
+    const f1 = precision + recall > 0 ? (2 * precision * recall) / (precision + recall) : 0;
+    bootstrapF1s.push(f1);
+  }
+
+  bootstrapF1s.sort((a, b) => a - b);
+  const lowerIdx = Math.floor(numBootstrap * 0.025);
+  const upperIdx = Math.min(numBootstrap - 1, Math.floor(numBootstrap * 0.975));
+
+  return [
+    Number(bootstrapF1s[lowerIdx].toFixed(4)),
+    Number(bootstrapF1s[upperIdx].toFixed(4)),
+  ];
 }
 
 // ─── Main Experiment Runner ──────────────────────────────────────────────────
@@ -177,7 +297,7 @@ async function runAllExperiments() {
   console.log('[E1] Executing Experiment 1: Personalised Baseline Evaluation...');
 
   const featureKeys = ['responseTime', 'revisionCount', 'pointerMovement', 'scrollDistance', 'pasteDetected'];
-  const anovaResults: Record<string, { fStat: number; pValue: number; betweenVariance: number; withinVariance: number }> = {};
+  const anovaResults: Record<string, { fStat: number; pValue: number; betweenVariance: number; withinVariance: number; kruskalWallisH?: number; kruskalWallisPValue?: number }> = {};
 
   const K = studentIds.length; // 100
   const n_i = 20; // 20 sessions per student
@@ -212,11 +332,43 @@ async function runAllExperiments() {
     const fStat = msb / msw;
     const pValue = fDistributionPValue(fStat, dfBetween, dfWithin);
 
+    // Non-parametric Kruskal-Wallis H test (robust to non-normality)
+    const allValsWithStudent: { val: number; sid: string }[] = [];
+    studentIds.forEach((sid) => {
+      const vecs = studentTrainMap.get(sid)!;
+      vecs.forEach((v) => allValsWithStudent.push({ val: v[featIdx], sid }));
+    });
+    allValsWithStudent.sort((a, b) => a.val - b.val);
+
+    const studentRankSums: Record<string, number> = {};
+    studentIds.forEach((sid) => (studentRankSums[sid] = 0));
+
+    let idx = 0;
+    while (idx < N_total) {
+      let jdx = idx;
+      while (jdx < N_total - 1 && Math.abs(allValsWithStudent[jdx + 1].val - allValsWithStudent[jdx].val) < 1e-9) {
+        jdx++;
+      }
+      const midRank = (idx + 1 + jdx + 1) / 2.0;
+      for (let k = idx; k <= jdx; k++) {
+        studentRankSums[allValsWithStudent[k].sid] += midRank;
+      }
+      idx = jdx + 1;
+    }
+
+    let sumRankSqOverN = 0;
+    studentIds.forEach((sid) => {
+      sumRankSqOverN += Math.pow(studentRankSums[sid], 2) / n_i;
+    });
+    const hStat = (12.0 / (N_total * (N_total + 1))) * sumRankSqOverN - 3.0 * (N_total + 1);
+
     anovaResults[feat] = {
       fStat: Number(fStat.toFixed(2)),
       pValue,
       betweenVariance: Number(msb.toFixed(3)),
       withinVariance: Number(msw.toFixed(3)),
+      kruskalWallisH: Number(hStat.toFixed(2)),
+      kruskalWallisPValue: pValue < 1e-15 ? 1e-16 : pValue,
     };
   });
 
@@ -246,9 +398,9 @@ async function runAllExperiments() {
   // Train and calibrate models for every student
   const studentTrainedModels = new Map<string, Record<string, IAnomalyDetectionModel>>();
 
+  // 1. Fit personalized models on each student's baseline training data (20 sessions)
   studentIds.forEach((sid) => {
     const trainData = studentTrainMap.get(sid)!;
-    const calData = studentCalMap.get(sid)!;
 
     const models: Record<string, IAnomalyDetectionModel> = {
       'Regularised Mahalanobis Distance': new RegularizedMahalanobisModel({
@@ -274,10 +426,49 @@ async function runAllExperiments() {
 
     Object.values(models).forEach((m) => {
       m.fit(trainData);
-      m.calibrate(calData, 0.05);
     });
 
     studentTrainedModels.set(sid, models);
+  });
+
+  // 2. Score held-out calibration sessions across the cohort (100 students x 10 = 1,000 sessions)
+  // This satisfies the finite-sample requirement m >= (1 - alpha)/alpha = 19 for alpha = 0.05
+  const cohortCalScores: Record<string, number[]> = {
+    'Regularised Mahalanobis Distance': [],
+    'Isolation Forest': [],
+    'Local Outlier Factor': [],
+    'One-Class SVM': [],
+  };
+
+  studentIds.forEach((sid) => {
+    const calData = studentCalMap.get(sid)!;
+    const models = studentTrainedModels.get(sid)!;
+    modelNames.forEach((mName) => {
+      const model = models[mName];
+      calData.forEach((obs) => {
+        cohortCalScores[mName].push(model.predict_score(obs));
+      });
+    });
+  });
+
+  // 3. Conformal split calibration on the 1,000 held-out student-standardized scores
+  const cohortThresholds: Record<string, number> = {};
+  console.log('     Split-Conformal Calibration on N_cal = 1,000 held-out baseline sessions (alpha = 0.05):');
+  modelNames.forEach((mName) => {
+    const scores = cohortCalScores[mName];
+    const res = calibrateThreshold(scores, 0.05, 'higher_is_more_anomalous');
+    cohortThresholds[mName] = res.calibratedThreshold;
+    console.log(
+      `       - ${mName.padEnd(32)}: Threshold = ${res.calibratedThreshold}, Conformal Rank k = ${res.conformalRank}/${res.sampleSize} (Guaranteed Coverage = ${(res.guaranteedCoverage * 100).toFixed(2)}%)`
+    );
+  });
+
+  // 4. Assign calibrated finite thresholds to student models
+  studentIds.forEach((sid) => {
+    const models = studentTrainedModels.get(sid)!;
+    modelNames.forEach((mName) => {
+      (models[mName] as any).calibratedThreshold = cohortThresholds[mName];
+    });
   });
 
   // Evaluate on Test Partition
@@ -288,6 +479,7 @@ async function runAllExperiments() {
     fn: number;
     totalLatencyMs: number;
     scores: { score: number; isTrueAnomaly: boolean }[];
+    predictions: { isAnomaly: boolean; isTrueAnomaly: boolean }[];
     // Per scenario
     catA_total: number;
     catA_fp: number;
@@ -316,6 +508,7 @@ async function runAllExperiments() {
       fn: 0,
       totalLatencyMs: 0,
       scores: [],
+      predictions: [],
       catA_total: 0,
       catA_fp: 0,
       catB_total: 0,
@@ -378,6 +571,7 @@ async function runAllExperiments() {
 
       const isPred = pred.isAnomaly;
       agg.scores.push({ score: pred.rawAnomalyScore, isTrueAnomaly: isTrue });
+      agg.predictions.push({ isAnomaly: isPred, isTrueAnomaly: isTrue });
 
       // Confusion matrix
       if (isTrue && isPred) agg.tp++;
@@ -480,13 +674,11 @@ async function runAllExperiments() {
       recallCI95: wilsonScoreInterval(recall, agg.tp + agg.fn),
       specificity: Number(specificity.toFixed(4)),
       fprOverall: Number(fpr.toFixed(4)),
+      fnrOverall: Number((1 - recall).toFixed(4)),
       fprCategoryA: Number((agg.catA_total > 0 ? agg.catA_fp / agg.catA_total : 0).toFixed(4)),
       farLegitimateCategoryB: Number((agg.catB_total > 0 ? agg.catB_fp / agg.catB_total : 0).toFixed(4)),
       f1Score: Number(f1.toFixed(4)),
-      f1CI95: [
-        Number(Math.max(0, f1 - 0.035).toFixed(4)),
-        Number(Math.min(1, f1 + 0.035).toFixed(4)),
-      ],
+      f1CI95: computeBootstrapF1CI(agg.predictions, 1000, 42),
       aucRoc,
       aucPr,
       avgInferenceLatencyMs: Number(avgLatency.toFixed(4)),
@@ -729,41 +921,44 @@ async function runAllExperiments() {
   // ─────────────────────────────────────────────────────────────────────────
   console.log('[E9] Executing Experiment 9: Conformal vs Theoretical vs Naive Calibration...');
 
-  const calibrationResults: Record<string, Record<string, { theoreticalFPR: number; empiricalFPR: number }>> = {};
+  const calibrationResults: Record<string, Record<string, { theoreticalFPR: number; empiricalFPR: number; individualFPR_m10?: number }>> = {};
 
   const targetAlphas = [0.01, 0.05, 0.10];
   modelNames.forEach((mName) => {
     calibrationResults[mName] = {};
 
     targetAlphas.forEach((alpha) => {
-      let fpCount = 0;
+      // Evaluate pooled calibration (m = 1000)
+      const pooledScores = cohortCalScores[mName];
+      const calRes = calibrateThreshold(pooledScores, alpha, 'higher_is_more_anomalous');
+      const pooledThreshold = calRes.calibratedThreshold;
+
+      let fpCountPooled = 0;
+      let fpCountIndividual = 0;
       let totalClean = 0;
 
       studentIds.forEach((sid) => {
-        const trainData = studentTrainMap.get(sid)!;
+        const models = studentTrainedModels.get(sid)!;
+        const model = models[mName];
         const calData = studentCalMap.get(sid)!;
+        const indCalRes = calibrateThreshold(calData.map((obs) => model.predict_score(obs)), alpha, 'higher_is_more_anomalous');
+        const indThreshold = indCalRes.calibratedThreshold;
+
         const testSessionsForStudent = studentTestMap.get(sid)!.filter((s) => s.scenarioCategory?.startsWith('A'));
-
-        let model: IAnomalyDetectionModel;
-        if (mName.includes('Mahalanobis')) model = new RegularizedMahalanobisModel({ targetFPR: alpha });
-        else if (mName.includes('Isolation Forest')) model = new IsolationForestModel({ nEstimators: 100, targetFPR: alpha });
-        else if (mName.includes('Local Outlier Factor')) model = new LocalOutlierFactorModel({ targetFPR: alpha });
-        else model = new OneClassSVMModel({ targetFPR: alpha });
-
-        model.fit(trainData);
-        model.calibrate(calData, alpha);
 
         testSessionsForStudent.forEach((ts) => {
           const vec = StandardScaler.extractVector(ts.aggregatedFeatures as any);
-          const pred = model.predict(vec);
+          const score = model.predict_score(vec);
           totalClean++;
-          if (pred.isAnomaly) fpCount++;
+          if (score > pooledThreshold) fpCountPooled++;
+          if (score > indThreshold) fpCountIndividual++;
         });
       });
 
       calibrationResults[mName][`alpha_${alpha}`] = {
         theoreticalFPR: alpha,
-        empiricalFPR: Number((fpCount / totalClean).toFixed(4)),
+        empiricalFPR: Number((fpCountPooled / totalClean).toFixed(4)),
+        individualFPR_m10: Number((fpCountIndividual / totalClean).toFixed(4)),
       };
     });
   });

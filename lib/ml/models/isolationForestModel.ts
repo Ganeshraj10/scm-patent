@@ -127,7 +127,7 @@ export class IsolationForestModel implements IAnomalyDetectionModel {
     }
 
     const p = ML_ORDERED_FEATURES.length;
-    // Find candidate features that have variation
+    // Find candidate features that have true variation in this node
     const candidates: { featureIdx: number; minVal: number; maxVal: number }[] = [];
     for (let j = 0; j < p; j++) {
       let minVal = Infinity;
@@ -137,12 +137,14 @@ export class IsolationForestModel implements IAnomalyDetectionModel {
         if (v < minVal) minVal = v;
         if (v > maxVal) maxVal = v;
       }
-      if (maxVal - minVal <= 1e-6) {
-        // Feature has near zero variation in this sub-sample; allow virtual split boundary
-        minVal = minVal - 0.5;
-        maxVal = maxVal + 0.5;
+      if (maxVal - minVal > 1e-6) {
+        candidates.push({ featureIdx: j, minVal, maxVal });
       }
-      candidates.push({ featureIdx: j, minVal, maxVal });
+    }
+
+    // If no features have variation in this node, all points are identical and form a leaf
+    if (candidates.length === 0) {
+      return { isLeaf: true, size: n };
     }
 
     // Select randomly among candidate features

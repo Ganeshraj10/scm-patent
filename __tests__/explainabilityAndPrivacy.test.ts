@@ -38,14 +38,14 @@ describe('Phase 4: Explainable AI, Privacy & Human-in-the-Loop Review', () => {
         2 + (i % 3 === 0 ? 1 : 0),      // revisionCount: ~2 to 3
         400 + Math.cos(i * 1.2) * 50,   // pointerMovement: ~350 to 450 px
         300 + Math.sin(i * 0.9) * 40,   // scrollDistance: ~260 to 340 px
-        0,                              // pasteDetected: 0
+        i === 0 ? 1 : 0,                // pasteDetected: occasional baseline paste
       ]);
     }
     return data;
   };
 
   const trainData = generateBaselineData(20);
-  const calData = generateBaselineData(10);
+  const calData = generateBaselineData(20); // Held-out calibration set (m=20 >= 19 required for finite conformal threshold at alpha=0.05)
 
   // Normal, Paste-Anomalous, and Missing Data test observations
   const normalObs = [26.0, 2.0, 395.0, 305.0, 0];

@@ -48,7 +48,7 @@ describe('Phase 3: Four-Model Anomaly Detection Subsystem', () => {
   };
 
   const trainData = generateBaselineData(20);
-  const calData = generateBaselineData(10); // Held-out calibration set
+  const calData = generateBaselineData(20); // Held-out calibration set (m=20 >= 19 required for finite conformal threshold at alpha=0.05)
 
   const testNormalObs = [26.0, 2.0, 390.0, 310.0, 0];
   const testSingleDevObs = [25.0, 2.0, 400.0, 300.0, 12]; // 12 pastes (extreme deviation)
@@ -107,7 +107,7 @@ describe('Phase 3: Four-Model Anomaly Detection Subsystem', () => {
 
           const meta = model.get_metadata();
           expect(meta.calibratedThreshold).toBe(threshold);
-          expect(meta.calibrationObservationCount).toBe(10);
+          expect(meta.calibrationObservationCount).toBe(calData.length);
         });
 
         test('predict() returns standardized AnomalyPrediction format', () => {
@@ -308,6 +308,80 @@ describe('Phase 3: Four-Model Anomaly Detection Subsystem', () => {
       expect(res.sampleSize).toBe(10);
       expect(res.targetFPR).toBe(0.1);
       expect(res.calibratedThreshold).toBeGreaterThanOrEqual(0.8);
+      expect(res.isInfiniteThreshold).toBe(false);
+    });
+
+    test('correctly handles finite-sample boundary conditions across sample sizes (m=5, 10, 19, 20, 50)', () => {
+      // Case m=5, alpha=0.05: k = ceil(6 * 0.95) = 6 > 5 -> Infinite threshold
+      const scores5 = [1.0, 2.0, 3.0, 4.0, 5.0];
+      const res5 = calibrateThreshold(scores5, 0.05);
+      expect(res5.conformalRank).toBe(6);
+      expect(res5.isInfiniteThreshold).toBe(true);
+      expect(res5.calibratedThreshold).toBe(Infinity);
+      expect(res5.minRequiredSampleSize).toBe(19);
+
+      // Case m=10, alpha=0.05: k = ceil(11 * 0.95) = 11 > 10 -> Infinite threshold (no silent clamping!)
+      const scores10 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      const res10 = calibrateThreshold(scores10, 0.05);
+      expect(res10.conformalRank).toBe(11);
+      expect(res10.isInfiniteThreshold).toBe(true);
+      expect(res10.calibratedThreshold).toBe(Infinity);
+
+      // Case m=19, alpha=0.05: k = ceil(20 * 0.95) = 19 <= 19 -> First finite threshold at rank 19!
+      const scores19 = Array.from({ length: 19 }, (_, i) => i + 1);
+      const res19 = calibrateThreshold(scores19, 0.05);
+      expect(res19.conformalRank).toBe(19);
+      expect(res19.isInfiniteThreshold).toBe(false);
+      expect(res19.calibratedThreshold).toBe(19);
+
+      // Case m=20, alpha=0.05: k = ceil(21 * 0.95) = 20 <= 20 -> Finite threshold
+      const scores20 = Array.from({ length: 20 }, (_, i) => i + 1);
+      const res20 = calibrateThreshold(scores20, 0.05);
+      expect(res20.conformalRank).toBe(20);
+      expect(res20.isInfiniteThreshold).toBe(false);
+      expect(res20.calibratedThreshold).toBe(20);
+
+      // Case m=50, alpha=0.05: k = ceil(51 * 0.95) = 49 <= 50 -> Finite threshold
+      const scores50 = Array.from({ length: 50 }, (_, i) => (i + 1) * 0.1);
+      const res50 = calibrateThreshold(scores50, 0.05);
+      expect(res50.conformalRank).toBe(49);
+      expect(res50.isInfiniteThreshold).toBe(false);
+      expect(res50.calibratedThreshold).toBeCloseTo(4.9, 2);
+    });
+
+    test('handles different alpha values (0.01, 0.10, 0.20)', () => {
+      const scores20 = Array.from({ length: 20 }, (_, i) => i + 1);
+
+      // alpha = 0.01: minRequired = ceil(0.99 / 0.01) = 99. With m=20, must be Infinite!
+      const res01 = calibrateThreshold(scores20, 0.01);
+      expect(res01.isInfiniteThreshold).toBe(true);
+      expect(res01.calibratedThreshold).toBe(Infinity);
+
+      // alpha = 0.10: minRequired = ceil(0.90 / 0.10) = 9. With m=20, k = ceil(21 * 0.90) = 19 <= 20.
+      const res10 = calibrateThreshold(scores20, 0.10);
+      expect(res10.isInfiniteThreshold).toBe(false);
+      expect(res10.conformalRank).toBe(19);
+      expect(res10.calibratedThreshold).toBe(19);
+
+      // alpha = 0.20: k = ceil(21 * 0.80) = 17 <= 20.
+      const res20 = calibrateThreshold(scores20, 0.20);
+      expect(res20.isInfiniteThreshold).toBe(false);
+      expect(res20.conformalRank).toBe(17);
+      expect(res20.calibratedThreshold).toBe(17);
+    });
+
+    test('handles score ties and extreme scores gracefully', () => {
+      // All tied scores
+      const tiedScores = Array.from({ length: 20 }, () => 2.5);
+      const resTied = calibrateThreshold(tiedScores, 0.05);
+      expect(resTied.isInfiniteThreshold).toBe(false);
+      expect(resTied.calibratedThreshold).toBe(2.5);
+
+      // Extreme scores (large dynamic range)
+      const extremeScores = [0.0001, 0.0002, 1e-5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 1e8];
+      const resExtreme = calibrateThreshold(extremeScores, 0.05);
+      expect(resExtreme.isInfiniteThreshold).toBe(false);
+      expect(resExtreme.calibratedThreshold).toBe(1e8);
     });
   });
 });

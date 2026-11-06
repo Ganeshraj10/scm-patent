@@ -125,63 +125,73 @@ export function invertMatrix5x5(matrix: number[][]): { inverse: number[][]; isSi
 
 function gaussJordanInvert(matrix: number[][]): { inverse: number[][]; isSingular: boolean } {
   const n = matrix.length;
-  // Augmented matrix [A + delta*I | I]
-  const aug: number[][] = Array.from({ length: n }, (_, i) => {
-    const row = new Array(2 * n).fill(0);
-    for (let j = 0; j < n; j++) {
-      row[j] = matrix[i][j] + (i === j ? 1e-3 : 0);
-    }
-    row[n + i] = 1;
-    return row;
-  });
+  // Adaptive Tikhonov ridge regularization levels: [1e-4, 1e-3, 1e-2, 1e-1, 1.0]
+  const ridgeLevels = [1e-4, 1e-3, 1e-2, 1e-1, 1.0];
 
-  for (let i = 0; i < n; i++) {
-    // Partial pivoting
-    let maxRow = i;
-    let maxVal = Math.abs(aug[i][i]);
-    for (let k = i + 1; k < n; k++) {
-      if (Math.abs(aug[k][i]) > maxVal) {
-        maxVal = Math.abs(aug[k][i]);
-        maxRow = k;
+  for (const delta of ridgeLevels) {
+    const aug: number[][] = Array.from({ length: n }, (_, i) => {
+      const row = new Array(2 * n).fill(0);
+      for (let j = 0; j < n; j++) {
+        row[j] = matrix[i][j] + (i === j ? delta : 0);
+      }
+      row[n + i] = 1;
+      return row;
+    });
+
+    let success = true;
+
+    for (let i = 0; i < n; i++) {
+      let maxRow = i;
+      let maxVal = Math.abs(aug[i][i]);
+      for (let k = i + 1; k < n; k++) {
+        if (Math.abs(aug[k][i]) > maxVal) {
+          maxVal = Math.abs(aug[k][i]);
+          maxRow = k;
+        }
+      }
+
+      if (maxVal < 1e-12 || isNaN(maxVal) || !isFinite(maxVal)) {
+        success = false;
+        break;
+      }
+
+      if (maxRow !== i) {
+        const temp = aug[i];
+        aug[i] = aug[maxRow];
+        aug[maxRow] = temp;
+      }
+
+      const pivot = aug[i][i];
+      for (let j = 0; j < 2 * n; j++) {
+        aug[i][j] /= pivot;
+      }
+
+      for (let k = 0; k < n; k++) {
+        if (k !== i) {
+          const factor = aug[k][i];
+          for (let j = 0; j < 2 * n; j++) {
+            aug[k][j] -= factor * aug[i][j];
+          }
+        }
       }
     }
 
-    if (maxVal < 1e-12 || isNaN(maxVal) || !isFinite(maxVal)) {
-      // Return Identity fallback if completely non-invertible
-      return {
-        inverse: Array.from({ length: n }, (_, r) =>
-          Array.from({ length: n }, (_, c) => (r === c ? 1 : 0))
-        ),
-        isSingular: true,
-      };
-    }
-
-    if (maxRow !== i) {
-      const temp = aug[i];
-      aug[i] = aug[maxRow];
-      aug[maxRow] = temp;
-    }
-
-    const pivot = aug[i][i];
-    for (let j = 0; j < 2 * n; j++) {
-      aug[i][j] /= pivot;
-    }
-
-    for (let k = 0; k < n; k++) {
-      if (k !== i) {
-        const factor = aug[k][i];
-        for (let j = 0; j < 2 * n; j++) {
-          aug[k][j] -= factor * aug[i][j];
-        }
+    if (success) {
+      const inv: number[][] = Array.from({ length: n }, (_, i) =>
+        aug[i].slice(n, 2 * n).map((v) => (isNaN(v) || !isFinite(v) ? 0 : v))
+      );
+      const allFinite = inv.every((r) => r.every((val) => isFinite(val) && !isNaN(val)));
+      if (allFinite) {
+        return { inverse: inv, isSingular: false };
       }
     }
   }
 
-  const inv: number[][] = Array.from({ length: n }, (_, i) =>
-    aug[i].slice(n, 2 * n).map((v) => (isNaN(v) || !isFinite(v) ? (i === 0 ? 1 : 0) : v))
-  );
-
-  return { inverse: inv, isSingular: false };
+  // If even heavy Tikhonov regularization fails, report true singularity explicitly
+  return {
+    inverse: [],
+    isSingular: true,
+  };
 }
 
 // ─── Covariance & Shrinkage Computations ──────────────────────────────────────
